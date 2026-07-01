@@ -8,6 +8,12 @@
     },
     "api/ai-suggest.py": {
       "maxDuration": 30
+    },
+    "api/image-search.py": {
+      "maxDuration": 15
+    },
+    "api/fetch-image.py": {
+      "maxDuration": 15
     }
   }
 }
