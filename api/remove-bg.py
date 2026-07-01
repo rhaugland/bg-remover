@@ -11,7 +11,7 @@ REMOVE_BG_KEY = os.environ.get("REMOVE_BG_API_KEY", "")
 
 
 def call_remove_bg(image_bytes):
-    """Call remove.bg API and return result with black background."""
+    """Call remove.bg API and return transparent PNG."""
     boundary = "----FormBoundary7MA4YWxkTrZu0gW"
     body = (
         f"--{boundary}\r\n"
@@ -20,8 +20,6 @@ def call_remove_bg(image_bytes):
     ).encode() + image_bytes + (
         f"\r\n--{boundary}\r\n"
         f'Content-Disposition: form-data; name="size"\r\n\r\nauto'
-        f"\r\n--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="bg_color"\r\n\r\n000000'
         f"\r\n--{boundary}--\r\n"
     ).encode()
 

@@ -304,10 +304,40 @@
       border: 1px solid rgba(255,255,255,0.06);
     }
 
-    .result-card canvas {
+    .drag-stage {
+      position: relative;
       width: 100%;
-      display: block;
+      aspect-ratio: 4/3;
+      background: #000;
+      overflow: hidden;
+      touch-action: none;
+      cursor: grab;
     }
+
+    .drag-stage:active { cursor: grabbing; }
+
+    .drag-stage img {
+      position: absolute;
+      max-width: 80%;
+      max-height: 80%;
+      user-select: none;
+      -webkit-user-select: none;
+      pointer-events: none;
+    }
+
+    .drag-hint {
+      position: absolute;
+      bottom: 10px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: rgba(255,255,255,0.25);
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    .drag-stage.dragged .drag-hint { opacity: 0; }
 
     .result-actions {
       padding: 12px 14px;
@@ -548,7 +578,7 @@
       downloadAllBtn.style.display = 'none';
       stopCamera();
 
-      const resultCanvases = [];
+      const resultItems = [];
 
       for (let i = 0; i < photos.length; i++) {
         statusEl.textContent = `${i + 1} of ${photos.length}`;
@@ -562,7 +592,6 @@
         resultsGrid.appendChild(spinnerEl);
 
         try {
-          // Convert blob to base64
           const dataUrl = await new Promise((resolve) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result);
@@ -572,7 +601,6 @@
           const prog = spinnerEl.querySelector('.progress-text');
           if (prog) prog.textContent = `Processing ${i + 1}/${photos.length}...`;
 
-          // Send to our Python serverless function
           const resp = await fetch('/api/remove-bg', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -586,7 +614,7 @@
 
           const { image: resultDataUrl } = await resp.json();
 
-          // Load result into an Image
+          // Load transparent PNG
           const img = new Image();
           await new Promise((resolve, reject) => {
             img.onload = resolve;
@@ -594,20 +622,27 @@
             img.src = resultDataUrl;
           });
 
-          // Draw to canvas
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          canvas.getContext('2d').drawImage(img, 0, 0);
-
-          // Build result card
+          // Build draggable result card
           const card = document.createElement('div');
           card.className = 'result-card';
 
-          const displayCanvas = document.createElement('canvas');
-          displayCanvas.width = canvas.width;
-          displayCanvas.height = canvas.height;
-          displayCanvas.getContext('2d').drawImage(canvas, 0, 0);
+          const stage = document.createElement('div');
+          stage.className = 'drag-stage';
+
+          const productImg = document.createElement('img');
+          productImg.src = resultDataUrl;
+          productImg.draggable = false;
+
+          const hint = document.createElement('div');
+          hint.className = 'drag-hint';
+          hint.textContent = 'Drag to reposition';
+
+          stage.appendChild(productImg);
+          stage.appendChild(hint);
+
+          // Center product initially after stage is in DOM
+          const item = { stage, productImg, img, index: i + 1, x: 0, y: 0 };
+          makeDraggable(item);
 
           const actions = document.createElement('div');
           actions.className = 'result-actions';
@@ -618,15 +653,27 @@
 
           const dlBtn = document.createElement('button');
           dlBtn.textContent = 'Save';
-          dlBtn.onclick = () => downloadCanvas(displayCanvas, `photo-${i + 1}.png`);
+          dlBtn.onclick = () => saveResult(item);
 
           actions.appendChild(label);
           actions.appendChild(dlBtn);
-          card.appendChild(displayCanvas);
+          card.appendChild(stage);
           card.appendChild(actions);
           spinnerEl.replaceWith(card);
 
-          resultCanvases.push({ canvas: displayCanvas, index: i + 1 });
+          // Center after DOM insertion
+          requestAnimationFrame(() => {
+            const sw = stage.offsetWidth;
+            const sh = stage.offsetHeight;
+            const iw = productImg.offsetWidth;
+            const ih = productImg.offsetHeight;
+            item.x = (sw - iw) / 2;
+            item.y = (sh - ih) / 2;
+            productImg.style.left = item.x + 'px';
+            productImg.style.top = item.y + 'px';
+          });
+
+          resultItems.push(item);
 
         } catch (err) {
           console.error('BG removal failed:', err);
@@ -635,17 +682,99 @@
       }
 
       statusEl.textContent = 'Done';
-      if (resultCanvases.length > 0) {
+      if (resultItems.length > 0) {
         downloadAllBtn.style.display = 'block';
         downloadAllBtn.onclick = () => {
-          resultCanvases.forEach(r => downloadCanvas(r.canvas, `photo-${r.index}.png`));
+          resultItems.forEach(r => saveResult(r));
         };
       }
     }
 
-    function downloadCanvas(canvas, filename) {
+    // ── Drag to reposition ──
+    function makeDraggable(item) {
+      const { stage, productImg } = item;
+      let dragging = false;
+      let startX, startY, origX, origY;
+
+      function onStart(clientX, clientY) {
+        dragging = true;
+        stage.classList.add('dragged');
+        const rect = stage.getBoundingClientRect();
+        startX = clientX - rect.left;
+        startY = clientY - rect.top;
+        origX = item.x;
+        origY = item.y;
+      }
+
+      function onMove(clientX, clientY) {
+        if (!dragging) return;
+        const rect = stage.getBoundingClientRect();
+        const cx = clientX - rect.left;
+        const cy = clientY - rect.top;
+        item.x = origX + (cx - startX);
+        item.y = origY + (cy - startY);
+        productImg.style.left = item.x + 'px';
+        productImg.style.top = item.y + 'px';
+      }
+
+      function onEnd() {
+        dragging = false;
+      }
+
+      // Touch events
+      stage.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          e.preventDefault();
+          onStart(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: false });
+
+      stage.addEventListener('touchmove', (e) => {
+        if (dragging && e.touches.length === 1) {
+          e.preventDefault();
+          onMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: false });
+
+      stage.addEventListener('touchend', onEnd);
+
+      // Mouse events
+      stage.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        onStart(e.clientX, e.clientY);
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        onMove(e.clientX, e.clientY);
+      });
+
+      window.addEventListener('mouseup', onEnd);
+    }
+
+    // ── Render final position to canvas and download ──
+    function saveResult(item) {
+      const { stage, productImg, img, index, x, y } = item;
+      const sw = stage.offsetWidth;
+      const sh = stage.offsetHeight;
+
+      // Render at high resolution (2x for retina)
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = sw * scale;
+      canvas.height = sh * scale;
+      const ctx = canvas.getContext('2d');
+
+      // Black background
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw product at its dragged position, scaled
+      const imgDisplayW = productImg.offsetWidth;
+      const imgDisplayH = productImg.offsetHeight;
+      ctx.drawImage(img, x * scale, y * scale, imgDisplayW * scale, imgDisplayH * scale);
+
       const link = document.createElement('a');
-      link.download = filename;
+      link.download = `product-${index}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     }
