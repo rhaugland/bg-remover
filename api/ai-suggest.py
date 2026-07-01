@@ -40,35 +40,45 @@ class handler(BaseHTTPRequestHandler):
                     },
                 })
 
+            # Anti-slop system prompt
+            system = """You write like a human — short, direct, natural.
+
+NEVER use these words or patterns:
+- "elevate", "craft/crafted", "unlock", "seamless", "transform", "revolutionize", "game-changer", "next-level", "cutting-edge", "state-of-the-art"
+- "whether you're...or...", "look no further", "say goodbye to", "take your X to the next level"
+- "designed to", "built to", "perfect for the discerning", "redefine", "reimagine"
+- Exclamation marks, em dashes for drama, rhetorical questions
+- Starting with "Introducing" or "Meet the"
+
+DO: Write like a knowledgeable friend describing the product. Be specific about materials, dimensions, colors, and features you can actually see. State facts. Keep it simple."""
+
             # Build prompt based on what we need
             if field == "description":
-                prompt = f"""You are a Shopify product copywriter. Based on the product images and title, write a compelling product description.
+                prompt = f"""Look at these product images. The product is called "{title}".
 
-Product title: {title}
+Write 2-3 short sentences describing what this product actually is and what makes it good. Mention specific details you can see — material, color, size, texture, construction. No hype, no filler. Just describe it like you're telling a friend what it is.
 
-Write 2-3 sentences that highlight the product's key features, appeal, and value. Be specific about what you see in the images. Write in a professional e-commerce tone. Return ONLY the description text, no quotes or labels."""
+Return ONLY the description text, no quotes or labels."""
 
             elif field == "seo":
-                prompt = f"""You are an SEO specialist for e-commerce. Based on the product images, title, and description, generate:
+                prompt = f"""Product: "{title}"
+Description: {description}
 
-Product title: {title}
-Product description: {description}
+Write a meta description and tags for this product.
 
 Return a JSON object with exactly these two fields:
-- "meta_description": A compelling meta description under 155 characters for Google search results
-- "tags": A comma-separated string of 5-8 relevant SEO tags/keywords
+- "meta_description": Under 155 characters. Straightforward — what the product is, one key selling point. No hype words.
+- "tags": Comma-separated string of 5-8 specific, searchable keywords a buyer would actually type. Include material, category, use case. No generic terms like "premium quality" or "best".
 
 Return ONLY valid JSON, nothing else."""
 
             else:
-                prompt = f"""You are a Shopify product copywriter and SEO specialist. Based on the product images and title, generate all product copy.
-
-Product title: {title}
+                prompt = f"""Look at these product images. The product is called "{title}".
 
 Return a JSON object with exactly these fields:
-- "description": 2-3 sentence compelling product description highlighting features and value
-- "meta_description": Meta description under 155 characters for Google
-- "tags": Comma-separated string of 5-8 SEO tags
+- "description": 2-3 short sentences. What is it, what's it made of, what makes it good. Specific details only.
+- "meta_description": Under 155 characters. Straightforward product summary.
+- "tags": Comma-separated string of 5-8 specific searchable keywords a buyer would actually type.
 
 Return ONLY valid JSON, nothing else."""
 
@@ -77,6 +87,7 @@ Return ONLY valid JSON, nothing else."""
             api_body = json.dumps({
                 "model": "claude-sonnet-4-20250514",
                 "max_tokens": 500,
+                "system": system,
                 "messages": [{"role": "user", "content": content}],
             }).encode()
 
