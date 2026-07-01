@@ -27,7 +27,7 @@ class handler(BaseHTTPRequestHandler):
                 "q": query,
                 "count": 10,
                 "search_lang": "en",
-                "safesearch": "moderate",
+                "safesearch": "off",
             })
 
             req = urllib.request.Request(
