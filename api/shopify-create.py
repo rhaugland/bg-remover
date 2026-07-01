@@ -3,16 +3,33 @@ import json
 import os
 import urllib.request
 import urllib.error
+import urllib.parse
 
 SHOPIFY_STORE = os.environ.get("SHOPIFY_STORE_URL", "")
-SHOPIFY_TOKEN = os.environ.get("SHOPIFY_ACCESS_TOKEN", "")
+SHOPIFY_CLIENT_ID = os.environ.get("SHOPIFY_CLIENT_ID", "")
+SHOPIFY_CLIENT_SECRET = os.environ.get("SHOPIFY_CLIENT_SECRET", "")
 API_VERSION = "2024-01"
 
 
-def shopify_request(path, method="GET", data=None):
+def get_access_token():
+    data = urllib.parse.urlencode({
+        "grant_type": "client_credentials",
+        "client_id": SHOPIFY_CLIENT_ID,
+        "client_secret": SHOPIFY_CLIENT_SECRET,
+    }).encode()
+    req = urllib.request.Request(
+        f"https://{SHOPIFY_STORE}/admin/oauth/access_token",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())["access_token"]
+
+
+def shopify_request(token, path, method="GET", data=None):
     base = f"https://{SHOPIFY_STORE}/admin/api/{API_VERSION}"
     headers = {
-        "X-Shopify-Access-Token": SHOPIFY_TOKEN,
+        "X-Shopify-Access-Token": token,
         "Content-Type": "application/json",
     }
     body = json.dumps(data).encode() if data else None
@@ -24,8 +41,10 @@ def shopify_request(path, method="GET", data=None):
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
-            if not SHOPIFY_STORE or not SHOPIFY_TOKEN:
+            if not SHOPIFY_STORE or not SHOPIFY_CLIENT_ID or not SHOPIFY_CLIENT_SECRET:
                 raise ValueError("Shopify credentials not configured")
+
+            token = get_access_token()
 
             content_length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(content_length))
@@ -59,7 +78,7 @@ class handler(BaseHTTPRequestHandler):
             }
 
             # Create product
-            result = shopify_request("/products.json", method="POST", data=product_data)
+            result = shopify_request(token, "/products.json", method="POST", data=product_data)
             product_id = result["product"]["id"]
 
             # Add to collection if specified
@@ -72,7 +91,7 @@ class handler(BaseHTTPRequestHandler):
                     }
                 }
                 try:
-                    shopify_request("/collects.json", method="POST", data=collect_data)
+                    shopify_request(token, "/collects.json", method="POST", data=collect_data)
                 except Exception:
                     pass  # Non-critical if collection add fails
 
