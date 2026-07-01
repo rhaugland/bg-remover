@@ -450,6 +450,58 @@
       padding: 0;
     }
 
+    /* Sharpness slider */
+    .sharpen-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .sharpen-control label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      white-space: nowrap;
+      min-width: 52px;
+    }
+
+    .sharpen-control input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.15);
+      outline: none;
+    }
+
+    .sharpen-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    .sharpen-control input[type="range"]::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+    }
+
+    .sharpen-value {
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+      font-weight: 600;
+      min-width: 24px;
+      text-align: right;
+    }
+
     .result-actions {
       padding: 12px 14px;
       display: flex;
@@ -551,7 +603,7 @@
 
     #continue-btn:active { background: rgba(255,255,255,0.85); }
 
-    /* ── Product Form Screen ── */
+    /* ── Product Form Screen (Wizard) ── */
     #product-screen {
       display: none;
       flex-direction: column;
@@ -592,13 +644,88 @@
 
     #product-header .spacer { width: 60px; }
 
-    #product-form {
-      padding: 20px 16px;
-      padding-bottom: max(env(safe-area-inset-bottom, 16px), 40px);
+    /* Step indicators */
+    .step-dots {
       display: flex;
+      gap: 6px;
+      justify-content: center;
+      padding: 16px 0 4px;
+    }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      transition: background 0.2s, width 0.2s;
+    }
+
+    .step-dot.active {
+      background: #fff;
+      width: 24px;
+      border-radius: 4px;
+    }
+
+    .step-dot.done {
+      background: rgba(255,255,255,0.4);
+    }
+
+    /* Wizard step container */
+    .wizard-step {
+      display: none;
       flex-direction: column;
       gap: 20px;
+      padding: 20px 16px;
+      padding-bottom: max(env(safe-area-inset-bottom, 16px), 40px);
     }
+
+    .wizard-step.active { display: flex; }
+
+    .step-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .step-subtitle {
+      font-size: 13px;
+      color: rgba(255,255,255,0.3);
+      margin-top: -12px;
+    }
+
+    .wizard-nav {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .wizard-nav button {
+      flex: 1;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+      letter-spacing: 0.3px;
+    }
+
+    .wizard-prev {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+
+    .wizard-prev:active { background: rgba(255,255,255,0.2); }
+
+    .wizard-next {
+      background: #fff;
+      color: #000;
+    }
+
+    .wizard-next:active { background: rgba(255,255,255,0.85); }
 
     .form-group {
       display: flex;
@@ -636,7 +763,7 @@
     }
 
     .form-group textarea {
-      min-height: 80px;
+      min-height: 100px;
       resize: vertical;
     }
 
@@ -663,7 +790,7 @@
     /* Image preview strip in form */
     .form-images {
       display: flex;
-      gap: 8px;
+      gap: 10px;
       overflow-x: auto;
       scrollbar-width: none;
       padding: 4px 0;
@@ -672,8 +799,8 @@
     .form-images::-webkit-scrollbar { display: none; }
 
     .form-images img {
-      height: 64px;
-      border-radius: 8px;
+      height: 80px;
+      border-radius: 10px;
       border: 1px solid rgba(255,255,255,0.1);
     }
 
@@ -690,22 +817,6 @@
       text-align: center;
       margin-top: 8px;
     }
-
-    #review-btn {
-      padding: 16px;
-      background: #fff;
-      color: #000;
-      border: none;
-      border-radius: 14px;
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      -webkit-appearance: none;
-      text-align: center;
-      margin-top: 8px;
-    }
-
-    #review-btn:active { background: rgba(255,255,255,0.85); }
 
     /* ── Review Screen ── */
     #review-screen {
@@ -879,14 +990,26 @@
     <button id="continue-btn">Continue to Product Details</button>
   </div>
 
-  <!-- Product Form Screen -->
+  <!-- Product Form Screen (Wizard) -->
   <div id="product-screen">
     <div id="product-header">
       <button id="product-back-btn">Back</button>
       <span id="product-header-title">New Product</span>
       <div class="spacer"></div>
     </div>
-    <form id="product-form">
+
+    <div class="step-dots" id="step-dots">
+      <div class="step-dot active"></div>
+      <div class="step-dot"></div>
+      <div class="step-dot"></div>
+      <div class="step-dot"></div>
+    </div>
+
+    <!-- Step 1: Images + Title + Description -->
+    <div class="wizard-step active" data-step="0">
+      <div class="step-title">Product Info</div>
+      <div class="step-subtitle">Name and describe your product</div>
+
       <div class="form-group">
         <label>Product Images</label>
         <div class="form-images" id="form-images"></div>
@@ -894,7 +1017,7 @@
 
       <div class="form-group">
         <label>Title</label>
-        <input type="text" id="f-title" placeholder="Product name" required>
+        <input type="text" id="f-title" placeholder="Product name">
       </div>
 
       <div class="form-group">
@@ -902,42 +1025,62 @@
         <textarea id="f-description" placeholder="Describe your product..."></textarea>
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label>Price</label>
-          <input type="number" id="f-price" placeholder="0.00" step="0.01" min="0" required>
-        </div>
-        <div class="form-group">
-          <label>Weight (lbs)</label>
-          <input type="number" id="f-weight" placeholder="0.0" step="0.1" min="0">
-        </div>
+      <div class="wizard-nav">
+        <button type="button" class="wizard-next" onclick="wizardNext()">Next</button>
       </div>
+    </div>
+
+    <!-- Step 2: Price + Weight -->
+    <div class="wizard-step" data-step="1">
+      <div class="step-title">Pricing</div>
+      <div class="step-subtitle">Set your price and shipping weight</div>
+
+      <div class="form-group">
+        <label>Price</label>
+        <input type="number" id="f-price" placeholder="0.00" step="0.01" min="0">
+      </div>
+
+      <div class="form-group">
+        <label>Weight (lbs)</label>
+        <input type="number" id="f-weight" placeholder="0.0" step="0.1" min="0">
+      </div>
+
+      <div class="wizard-nav">
+        <button type="button" class="wizard-prev" onclick="wizardPrev()">Back</button>
+        <button type="button" class="wizard-next" onclick="wizardNext()">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Category + Collection -->
+    <div class="wizard-step" data-step="2">
+      <div class="step-title">Organization</div>
+      <div class="step-subtitle">Categorize your product</div>
 
       <div class="form-group">
         <label>Product Category</label>
         <select id="f-category">
           <option value="">Select category...</option>
           <option value="Accessories">Accessories</option>
-          <option value="Arts & Entertainment">Arts & Entertainment</option>
-          <option value="Baby & Toddler">Baby & Toddler</option>
-          <option value="Business & Industrial">Business & Industrial</option>
+          <option value="Arts & Entertainment">Arts &amp; Entertainment</option>
+          <option value="Baby & Toddler">Baby &amp; Toddler</option>
+          <option value="Business & Industrial">Business &amp; Industrial</option>
           <option value="Clothing">Clothing</option>
           <option value="Electronics">Electronics</option>
-          <option value="Food, Beverages & Tobacco">Food, Beverages & Tobacco</option>
+          <option value="Food, Beverages & Tobacco">Food, Beverages &amp; Tobacco</option>
           <option value="Furniture">Furniture</option>
           <option value="Hardware">Hardware</option>
-          <option value="Health & Beauty">Health & Beauty</option>
-          <option value="Home & Garden">Home & Garden</option>
+          <option value="Health & Beauty">Health &amp; Beauty</option>
+          <option value="Home & Garden">Home &amp; Garden</option>
           <option value="Jewelry">Jewelry</option>
-          <option value="Luggage & Bags">Luggage & Bags</option>
+          <option value="Luggage & Bags">Luggage &amp; Bags</option>
           <option value="Media">Media</option>
           <option value="Office Supplies">Office Supplies</option>
           <option value="Pet Supplies">Pet Supplies</option>
           <option value="Shoes">Shoes</option>
           <option value="Software">Software</option>
           <option value="Sporting Goods">Sporting Goods</option>
-          <option value="Toys & Games">Toys & Games</option>
-          <option value="Vehicles & Parts">Vehicles & Parts</option>
+          <option value="Toys & Games">Toys &amp; Games</option>
+          <option value="Vehicles & Parts">Vehicles &amp; Parts</option>
         </select>
       </div>
 
@@ -948,9 +1091,20 @@
         </select>
       </div>
 
+      <div class="wizard-nav">
+        <button type="button" class="wizard-prev" onclick="wizardPrev()">Back</button>
+        <button type="button" class="wizard-next" onclick="wizardNext()">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Meta + SEO -->
+    <div class="wizard-step" data-step="3">
+      <div class="step-title">SEO</div>
+      <div class="step-subtitle">Optimize for search engines</div>
+
       <div class="form-group">
         <label>Meta Description</label>
-        <textarea id="f-meta" placeholder="SEO description for Google..." style="min-height:60px"></textarea>
+        <textarea id="f-meta" placeholder="SEO description for Google..." style="min-height:80px"></textarea>
         <span class="form-hint">Appears in Google search results</span>
       </div>
 
@@ -960,8 +1114,11 @@
         <span class="form-hint">Comma-separated</span>
       </div>
 
-      <button type="submit" id="review-btn">Review Product</button>
-    </form>
+      <div class="wizard-nav">
+        <button type="button" class="wizard-prev" onclick="wizardPrev()">Back</button>
+        <button type="button" class="wizard-next" onclick="showReview()">Review Product</button>
+      </div>
+    </div>
   </div>
 
   <!-- Review Screen -->
@@ -1212,7 +1369,7 @@
           stage.appendChild(hint);
 
           // Center product initially after stage is in DOM
-          const item = { stage, productImg, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000' };
+          const item = { stage, productImg, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000', sharpness: 0, originalDataUrl: resultDataUrl, originalImg: img };
           makeDraggable(item);
 
           // Background color picker
@@ -1231,8 +1388,10 @@
 
           actions.appendChild(label);
           actions.appendChild(dlBtn);
+          const sharpenRow = buildSharpenSlider(item);
           card.appendChild(stage);
           card.appendChild(picker);
+          card.appendChild(sharpenRow);
           card.appendChild(actions);
           spinnerEl.replaceWith(card);
 
@@ -1474,11 +1633,109 @@
       }, { passive: false });
     }
 
+    // ── Sharpen image via convolution ──
+    function sharpenImage(sourceImg, amount) {
+      // amount 0 = no change, 1 = full sharpen
+      const c = document.createElement('canvas');
+      const w = sourceImg.naturalWidth || sourceImg.width;
+      const h = sourceImg.naturalHeight || sourceImg.height;
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(sourceImg, 0, 0, w, h);
+
+      if (amount <= 0) return c.toDataURL('image/png');
+
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const src = imageData.data;
+      const out = new Uint8ClampedArray(src.length);
+
+      // Sharpen kernel weighted by amount
+      const a = amount;
+      const center = 1 + 4 * a;
+      // kernel: [0, -a, 0, -a, center, -a, 0, -a, 0]
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const i = (y * w + x) * 4;
+          for (let ch = 0; ch < 3; ch++) {
+            const val =
+              -a * src[((y - 1) * w + x) * 4 + ch] +
+              -a * src[(y * w + (x - 1)) * 4 + ch] +
+              center * src[i + ch] +
+              -a * src[(y * w + (x + 1)) * 4 + ch] +
+              -a * src[((y + 1) * w + x) * 4 + ch];
+            out[i + ch] = val;
+          }
+          out[i + 3] = src[i + 3]; // preserve alpha
+        }
+      }
+
+      // Copy edges unmodified
+      for (let x = 0; x < w; x++) {
+        for (let ch = 0; ch < 4; ch++) {
+          out[x * 4 + ch] = src[x * 4 + ch];
+          out[((h - 1) * w + x) * 4 + ch] = src[((h - 1) * w + x) * 4 + ch];
+        }
+      }
+      for (let y = 0; y < h; y++) {
+        for (let ch = 0; ch < 4; ch++) {
+          out[(y * w) * 4 + ch] = src[(y * w) * 4 + ch];
+          out[(y * w + w - 1) * 4 + ch] = src[(y * w + w - 1) * 4 + ch];
+        }
+      }
+
+      const outData = new ImageData(out, w, h);
+      ctx.putImageData(outData, 0, 0);
+      return c.toDataURL('image/png');
+    }
+
+    function buildSharpenSlider(item) {
+      const row = document.createElement('div');
+      row.className = 'sharpen-control';
+
+      const lbl = document.createElement('label');
+      lbl.textContent = 'Sharpen';
+      row.appendChild(lbl);
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '100';
+      slider.value = '0';
+      row.appendChild(slider);
+
+      const val = document.createElement('span');
+      val.className = 'sharpen-value';
+      val.textContent = '0';
+      row.appendChild(val);
+
+      let debounceTimer;
+      slider.addEventListener('input', () => {
+        const pct = parseInt(slider.value);
+        val.textContent = pct;
+        item.sharpness = pct / 100;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          if (item.sharpness > 0) {
+            const sharpened = sharpenImage(item.originalImg, item.sharpness);
+            item.productImg.src = sharpened;
+          } else {
+            item.productImg.src = item.originalDataUrl;
+          }
+        }, 100);
+      });
+
+      return row;
+    }
+
     // ── Render item to canvas data URL ──
     function renderItemToDataUrl(item) {
-      const { stage, productImg, img, x, y, imgScale } = item;
+      const { stage, productImg, x, y, imgScale } = item;
       const sw = stage.offsetWidth;
       const sh = stage.offsetHeight;
+      if (!sw || !sh) return '';
       const renderScale = 2;
       const canvas = document.createElement('canvas');
       canvas.width = sw * renderScale;
@@ -1488,7 +1745,9 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       const baseW = productImg.offsetWidth;
       const baseH = productImg.offsetHeight;
-      ctx.drawImage(img, x * renderScale, y * renderScale, baseW * imgScale * renderScale, baseH * imgScale * renderScale);
+
+      // Use the current productImg src (already sharpened if slider was used)
+      ctx.drawImage(productImg, x * renderScale, y * renderScale, baseW * imgScale * renderScale, baseH * imgScale * renderScale);
       return canvas.toDataURL('image/png');
     }
 
@@ -1500,8 +1759,51 @@
       link.click();
     }
 
-    // ── Product form flow ──
+    // ── Product form flow (wizard) ──
     let currentResultItems = [];
+    let cachedPreviewUrls = [];
+    let wizardStep = 0;
+    const totalSteps = 4;
+    const wizardSteps = document.querySelectorAll('.wizard-step');
+    const stepDots = document.querySelectorAll('.step-dot');
+
+    function updateWizardUI() {
+      wizardSteps.forEach((el, i) => {
+        el.classList.toggle('active', i === wizardStep);
+      });
+      stepDots.forEach((dot, i) => {
+        dot.classList.remove('active', 'done');
+        if (i === wizardStep) dot.classList.add('active');
+        else if (i < wizardStep) dot.classList.add('done');
+      });
+      const titles = ['Product Info', 'Pricing', 'Organization', 'SEO'];
+      document.getElementById('product-header-title').textContent = `Step ${wizardStep + 1} of ${totalSteps}`;
+      window.scrollTo(0, 0);
+    }
+
+    function wizardNext() {
+      // Validate step 0: title required
+      if (wizardStep === 0) {
+        const title = document.getElementById('f-title').value.trim();
+        if (!title) {
+          document.getElementById('f-title').focus();
+          document.getElementById('f-title').style.borderColor = '#ff6b6b';
+          setTimeout(() => { document.getElementById('f-title').style.borderColor = ''; }, 1500);
+          return;
+        }
+      }
+      if (wizardStep < totalSteps - 1) {
+        wizardStep++;
+        updateWizardUI();
+      }
+    }
+
+    function wizardPrev() {
+      if (wizardStep > 0) {
+        wizardStep--;
+        updateWizardUI();
+      }
+    }
 
     async function loadCollections() {
       collectionSelect.innerHTML = '<option value="">Loading...</option>';
@@ -1522,15 +1824,19 @@
     }
 
     function showProductForm() {
+      // Render previews BEFORE hiding the processing screen (stage must be visible for dimensions)
+      cachedPreviewUrls = currentResultItems.map(item => renderItemToDataUrl(item));
+
       processingScreen.style.display = 'none';
       productScreen.style.display = 'flex';
-      window.scrollTo(0, 0);
+      wizardStep = 0;
+      updateWizardUI();
 
-      // Show image previews
+      // Show image previews from cache
       formImagesEl.innerHTML = '';
-      currentResultItems.forEach(item => {
+      cachedPreviewUrls.forEach(url => {
         const preview = document.createElement('img');
-        preview.src = renderItemToDataUrl(item);
+        preview.src = url;
         formImagesEl.appendChild(preview);
       });
 
@@ -1540,14 +1846,12 @@
     continueBtn.addEventListener('click', showProductForm);
 
     productBackBtn.addEventListener('click', () => {
-      productScreen.style.display = 'none';
-      processingScreen.style.display = 'flex';
-    });
-
-    // Form submit → show review
-    productForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      showReview();
+      if (wizardStep > 0) {
+        wizardPrev();
+      } else {
+        productScreen.style.display = 'none';
+        processingScreen.style.display = 'flex';
+      }
     });
 
     function showReview() {
@@ -1562,10 +1866,10 @@
       const meta = document.getElementById('f-meta').value;
       const tags = document.getElementById('f-tags').value;
 
-      // Build review HTML
+      // Build review HTML using cached preview URLs
       let html = '<div class="review-images">';
-      currentResultItems.forEach(item => {
-        html += `<img src="${renderItemToDataUrl(item)}">`;
+      cachedPreviewUrls.forEach(url => {
+        html += `<img src="${url}">`;
       });
       html += '</div>';
 
