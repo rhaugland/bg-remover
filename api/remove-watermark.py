@@ -60,8 +60,8 @@ class handler(BaseHTTPRequestHandler):
 
             # Use Stability AI search-and-replace to remove watermarks
             fields = {
-                "prompt": "clean product surface, no text, no watermark, matching surrounding texture and color",
-                "search_prompt": "watermark, logo overlay, text overlay, brand stamp, semi-transparent text",
+                "prompt": "clean smooth product surface with original color and texture, no text or logos visible anywhere on the product or background",
+                "search_prompt": "semi-transparent watermark text and logo on the product surface, faded brand name overlay, ghosted eagle logo stamp on the product",
                 "output_format": "png",
             }
             files = {
