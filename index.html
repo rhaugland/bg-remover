@@ -149,6 +149,53 @@
       z-index: 2;
     }
 
+    /* Zoom slider */
+    #zoom-control {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 0 40px 16px;
+    }
+
+    #zoom-control.visible { display: flex; }
+
+    .zoom-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.5);
+      min-width: 32px;
+      text-align: center;
+    }
+
+    #zoom-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.15);
+      outline: none;
+    }
+
+    #zoom-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    #zoom-slider::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+    }
+
     /* Shutter area */
     #shutter-area {
       display: flex;
@@ -504,6 +551,11 @@
 
     <div id="bottom-controls">
       <div id="thumbnail-strip"></div>
+      <div id="zoom-control">
+        <span class="zoom-label">1x</span>
+        <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1">
+        <span class="zoom-label" id="zoom-max">5x</span>
+      </div>
       <div id="shutter-area">
         <button id="shutter-btn" aria-label="Take photo"></button>
         <button id="next-btn">Next</button>
@@ -528,6 +580,9 @@
     const photoCount = document.getElementById('photo-count');
     const thumbnailStrip = document.getElementById('thumbnail-strip');
     const captureCanvas = document.getElementById('capture-canvas');
+    const zoomControl = document.getElementById('zoom-control');
+    const zoomSlider = document.getElementById('zoom-slider');
+    const zoomMaxLabel = document.getElementById('zoom-max');
     const flash = document.getElementById('flash');
     const cameraScreen = document.getElementById('camera-screen');
     const processingScreen = document.getElementById('processing-screen');
@@ -561,6 +616,7 @@
             setTimeout(() => reject(new Error('Video load timeout')), 5000);
           });
           cameraReady = true;
+          setupZoom();
           return;
         } catch (err) {
           console.warn('Constraint failed, trying next:', err.message);
@@ -579,7 +635,41 @@
         stream = null;
       }
       cameraReady = false;
+      zoomControl.classList.remove('visible');
     }
+
+    function setupZoom() {
+      try {
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+
+        if (capabilities.zoom) {
+          const min = capabilities.zoom.min || 1;
+          const max = capabilities.zoom.max || 1;
+
+          if (max > min) {
+            zoomSlider.min = min;
+            zoomSlider.max = max;
+            zoomSlider.step = (max - min) / 50;
+            zoomSlider.value = min;
+            zoomMaxLabel.textContent = max.toFixed(0) + 'x';
+            zoomControl.classList.add('visible');
+          }
+        }
+      } catch (e) {
+        console.warn('Zoom not supported:', e);
+      }
+    }
+
+    zoomSlider.addEventListener('input', () => {
+      if (!stream) return;
+      try {
+        const track = stream.getVideoTracks()[0];
+        track.applyConstraints({ advanced: [{ zoom: parseFloat(zoomSlider.value) }] });
+      } catch (e) {
+        console.warn('Zoom failed:', e);
+      }
+    });
 
     function capturePhoto() {
       if (photos.length >= 5 || !cameraReady) return;
