@@ -427,8 +427,6 @@
   </div>
 
   <script>
-    let imglyRemoveBackground = null;
-
     const video = document.getElementById('camera');
     const shutterBtn = document.getElementById('shutter-btn');
     const nextBtn = document.getElementById('next-btn');
@@ -548,19 +546,6 @@
       downloadAllBtn.style.display = 'none';
       stopCamera();
 
-      // Lazy-load the BG removal library on first use
-      if (!imglyRemoveBackground) {
-        statusEl.textContent = 'Loading AI model...';
-        try {
-          const mod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm');
-          imglyRemoveBackground = mod.default;
-        } catch (err) {
-          console.error('Failed to load BG removal library:', err);
-          statusEl.textContent = 'Failed to load AI model';
-          return;
-        }
-      }
-
       const resultBlobs = [];
 
       for (let i = 0; i < photos.length; i++) {
@@ -575,21 +560,41 @@
         resultsGrid.appendChild(spinnerEl);
 
         try {
-          const removedBlob = await imglyRemoveBackground(photos[i], {
-            publicPath: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/dist/',
-            progress: (key, current, total) => {
-              if (key === 'compute:inference') {
-                const pct = Math.round((current / total) * 100);
-                const prog = spinnerEl.querySelector('.progress-text');
-                if (prog) prog.textContent = `Processing ${i + 1}/${photos.length}... ${pct}%`;
-              }
-            }
+          // Convert blob to base64 data URL
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(photos[i]);
           });
 
-          const img = await createImageBitmap(removedBlob);
+          const prog = spinnerEl.querySelector('.progress-text');
+          if (prog) prog.textContent = `Processing ${i + 1}/${photos.length}...`;
+
+          // Send to server for BG removal
+          const resp = await fetch('/api/remove-bg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataUrl }),
+          });
+
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.details || resp.statusText);
+          }
+
+          const { image: resultDataUrl } = await resp.json();
+
+          // Draw result onto canvas with black background
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = resultDataUrl;
+          });
+
           const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
           const ctx = canvas.getContext('2d');
           ctx.fillStyle = '#000000';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -624,7 +629,7 @@
 
         } catch (err) {
           console.error('BG removal failed:', err);
-          spinnerEl.innerHTML = `<div class="progress-text" style="color:#ff6b6b">Failed to process photo ${i + 1}</div>`;
+          spinnerEl.innerHTML = `<div class="progress-text" style="color:#ff6b6b">Failed: ${err.message}</div>`;
         }
       }
 
