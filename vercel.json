@@ -1,7 +1,9 @@
 {
   "functions": {
     "api/remove-bg.py": {
-      "memory": 1024,
+      "maxDuration": 30
+    },
+    "api/shopify-create.py": {
       "maxDuration": 30
     }
   }

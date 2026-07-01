@@ -532,6 +532,175 @@
 
     #capture-canvas { display: none; }
 
+    /* ── Continue button on results page ── */
+    #continue-btn {
+      display: none;
+      margin: 8px 16px 24px;
+      padding: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+      letter-spacing: 0.3px;
+    }
+
+    #continue-btn:active { background: rgba(255,255,255,0.85); }
+
+    /* ── Product Form Screen ── */
+    #product-screen {
+      display: none;
+      flex-direction: column;
+      min-height: 100dvh;
+      background: #000;
+      z-index: 25;
+    }
+
+    #product-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: max(env(safe-area-inset-top, 12px), 16px) 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0a0a0a;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    #product-back-btn {
+      padding: 8px 18px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    #product-header-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+    }
+
+    #product-header .spacer { width: 60px; }
+
+    #product-form {
+      padding: 20px 16px;
+      padding-bottom: max(env(safe-area-inset-bottom, 16px), 40px);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 15px;
+      color: #fff;
+      font-family: inherit;
+      -webkit-appearance: none;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      border-color: rgba(255,255,255,0.3);
+    }
+
+    .form-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .form-group select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .form-row .form-group { flex: 1; }
+
+    .form-hint {
+      font-size: 11px;
+      color: rgba(255,255,255,0.2);
+      margin-top: 2px;
+    }
+
+    /* Image preview strip in form */
+    .form-images {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 4px 0;
+    }
+
+    .form-images::-webkit-scrollbar { display: none; }
+
+    .form-images img {
+      height: 64px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    #publish-btn {
+      padding: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    #publish-btn:active { background: rgba(255,255,255,0.85); }
+    #publish-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #publish-status {
+      text-align: center;
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      min-height: 20px;
+    }
+
   </style>
 </head>
 <body>
@@ -571,6 +740,93 @@
       <button id="download-all-btn">Save All</button>
     </div>
     <div id="results-grid"></div>
+    <button id="continue-btn">Continue to Product Details</button>
+  </div>
+
+  <!-- Product Form Screen -->
+  <div id="product-screen">
+    <div id="product-header">
+      <button id="product-back-btn">Back</button>
+      <span id="product-header-title">New Product</span>
+      <div class="spacer"></div>
+    </div>
+    <form id="product-form">
+      <div class="form-group">
+        <label>Product Images</label>
+        <div class="form-images" id="form-images"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="f-title" placeholder="Product name" required>
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="f-description" placeholder="Describe your product..."></textarea>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Price</label>
+          <input type="number" id="f-price" placeholder="0.00" step="0.01" min="0" required>
+        </div>
+        <div class="form-group">
+          <label>Weight (lbs)</label>
+          <input type="number" id="f-weight" placeholder="0.0" step="0.1" min="0">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Product Category</label>
+        <select id="f-category">
+          <option value="">Select category...</option>
+          <option value="Accessories">Accessories</option>
+          <option value="Arts & Entertainment">Arts & Entertainment</option>
+          <option value="Baby & Toddler">Baby & Toddler</option>
+          <option value="Business & Industrial">Business & Industrial</option>
+          <option value="Clothing">Clothing</option>
+          <option value="Electronics">Electronics</option>
+          <option value="Food, Beverages & Tobacco">Food, Beverages & Tobacco</option>
+          <option value="Furniture">Furniture</option>
+          <option value="Hardware">Hardware</option>
+          <option value="Health & Beauty">Health & Beauty</option>
+          <option value="Home & Garden">Home & Garden</option>
+          <option value="Jewelry">Jewelry</option>
+          <option value="Luggage & Bags">Luggage & Bags</option>
+          <option value="Media">Media</option>
+          <option value="Office Supplies">Office Supplies</option>
+          <option value="Pet Supplies">Pet Supplies</option>
+          <option value="Shoes">Shoes</option>
+          <option value="Software">Software</option>
+          <option value="Sporting Goods">Sporting Goods</option>
+          <option value="Toys & Games">Toys & Games</option>
+          <option value="Vehicles & Parts">Vehicles & Parts</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Collection</label>
+        <select id="f-collection">
+          <option value="">Loading collections...</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Meta Description</label>
+        <textarea id="f-meta" placeholder="SEO description for Google..." style="min-height:60px"></textarea>
+        <span class="form-hint">Appears in Google search results</span>
+      </div>
+
+      <div class="form-group">
+        <label>SEO Tags</label>
+        <input type="text" id="f-tags" placeholder="tag1, tag2, tag3">
+        <span class="form-hint">Comma-separated</span>
+      </div>
+
+      <div id="publish-status"></div>
+      <button type="submit" id="publish-btn">Publish to Shopify</button>
+    </form>
   </div>
 
   <script>
@@ -590,6 +846,14 @@
     const statusEl = document.getElementById('processing-status');
     const backBtn = document.getElementById('back-btn');
     const downloadAllBtn = document.getElementById('download-all-btn');
+    const continueBtn = document.getElementById('continue-btn');
+    const productScreen = document.getElementById('product-screen');
+    const productBackBtn = document.getElementById('product-back-btn');
+    const productForm = document.getElementById('product-form');
+    const publishBtn = document.getElementById('publish-btn');
+    const publishStatus = document.getElementById('publish-status');
+    const formImagesEl = document.getElementById('form-images');
+    const collectionSelect = document.getElementById('f-collection');
 
     let photos = [];
     let stream = null;
@@ -840,11 +1104,13 @@
       }
 
       statusEl.textContent = 'Done';
+      currentResultItems = resultItems;
       if (resultItems.length > 0) {
         downloadAllBtn.style.display = 'block';
         downloadAllBtn.onclick = () => {
           resultItems.forEach(r => saveResult(r));
         };
+        continueBtn.style.display = 'block';
       }
     }
 
@@ -1055,35 +1321,121 @@
       }, { passive: false });
     }
 
-    // ── Render final position to canvas and download ──
-    function saveResult(item) {
-      const { stage, productImg, img, index, x, y, imgScale } = item;
+    // ── Render item to canvas data URL ──
+    function renderItemToDataUrl(item) {
+      const { stage, productImg, img, x, y, imgScale } = item;
       const sw = stage.offsetWidth;
       const sh = stage.offsetHeight;
-
-      // Render at high resolution (2x for retina)
       const renderScale = 2;
       const canvas = document.createElement('canvas');
       canvas.width = sw * renderScale;
       canvas.height = sh * renderScale;
       const ctx = canvas.getContext('2d');
-
       ctx.fillStyle = item.bgColor || '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const baseW = productImg.offsetWidth;
+      const baseH = productImg.offsetHeight;
+      ctx.drawImage(img, x * renderScale, y * renderScale, baseW * imgScale * renderScale, baseH * imgScale * renderScale);
+      return canvas.toDataURL('image/png');
+    }
 
-      // Draw product at its dragged position and pinch scale
-      const baseW = productImg.naturalWidth * (productImg.offsetWidth / productImg.naturalWidth);
-      const baseH = productImg.naturalHeight * (productImg.offsetHeight / productImg.naturalHeight);
-      const drawW = baseW * imgScale * renderScale;
-      const drawH = baseH * imgScale * renderScale;
-      ctx.drawImage(img, x * renderScale, y * renderScale, drawW, drawH);
-
+    function saveResult(item) {
+      const dataUrl = renderItemToDataUrl(item);
       const link = document.createElement('a');
-      link.download = `product-${index}.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.download = `product-${item.index}.png`;
+      link.href = dataUrl;
       link.click();
     }
 
+    // ── Product form flow ──
+    let currentResultItems = [];
+
+    async function loadCollections() {
+      collectionSelect.innerHTML = '<option value="">Loading...</option>';
+      try {
+        const resp = await fetch('/api/shopify-collections');
+        if (!resp.ok) throw new Error('Failed to fetch');
+        const data = await resp.json();
+        collectionSelect.innerHTML = '<option value="">No collection</option>';
+        data.collections.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.title;
+          collectionSelect.appendChild(opt);
+        });
+      } catch (err) {
+        collectionSelect.innerHTML = '<option value="">Could not load collections</option>';
+      }
+    }
+
+    function showProductForm() {
+      processingScreen.style.display = 'none';
+      productScreen.style.display = 'flex';
+      window.scrollTo(0, 0);
+
+      // Show image previews
+      formImagesEl.innerHTML = '';
+      currentResultItems.forEach(item => {
+        const preview = document.createElement('img');
+        preview.src = renderItemToDataUrl(item);
+        formImagesEl.appendChild(preview);
+      });
+
+      loadCollections();
+    }
+
+    continueBtn.addEventListener('click', showProductForm);
+
+    productBackBtn.addEventListener('click', () => {
+      productScreen.style.display = 'none';
+      processingScreen.style.display = 'flex';
+    });
+
+    productForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      publishBtn.disabled = true;
+      publishStatus.textContent = 'Publishing to Shopify...';
+      publishStatus.style.color = 'rgba(255,255,255,0.4)';
+
+      // Render all images as base64
+      const images = currentResultItems.map(item => {
+        const dataUrl = renderItemToDataUrl(item);
+        return dataUrl.split(',')[1]; // base64 only
+      });
+
+      const payload = {
+        title: document.getElementById('f-title').value,
+        description: document.getElementById('f-description').value,
+        price: document.getElementById('f-price').value,
+        weight: document.getElementById('f-weight').value,
+        category: document.getElementById('f-category').value,
+        collection_id: document.getElementById('f-collection').value,
+        meta_description: document.getElementById('f-meta').value,
+        tags: document.getElementById('f-tags').value,
+        images: images,
+      };
+
+      try {
+        const resp = await fetch('/api/shopify-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to create product');
+
+        publishStatus.style.color = '#4ade80';
+        publishStatus.textContent = 'Published! Product ID: ' + data.product_id;
+        publishBtn.textContent = 'Published';
+      } catch (err) {
+        publishStatus.style.color = '#ff6b6b';
+        publishStatus.textContent = 'Error: ' + err.message;
+        publishBtn.disabled = false;
+      }
+    });
+
+    // ── Navigation ──
     async function goBack() {
       processingScreen.style.display = 'none';
       document.body.classList.remove('scrollable');
