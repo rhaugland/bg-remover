@@ -85,7 +85,7 @@ Return ONLY valid JSON, nothing else."""
             content.append({"type": "text", "text": prompt})
 
             api_body = json.dumps({
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-sonnet-4-5-20250514",
                 "max_tokens": 500,
                 "system": system,
                 "messages": [{"role": "user", "content": content}],
