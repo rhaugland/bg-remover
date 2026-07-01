@@ -2056,6 +2056,7 @@
 
       // Touch events
       stage.addEventListener('touchstart', (e) => {
+        if (e.target.classList.contains('drag-mode-toggle')) return;
         e.preventDefault();
         stage.classList.add('dragged');
         const pos = getPos();
