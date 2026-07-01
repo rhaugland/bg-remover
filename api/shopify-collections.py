@@ -70,8 +70,19 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(response.encode())
 
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode()
+            error = json.dumps({"error": f"Shopify error {e.code}: {err_body}", "store": SHOPIFY_STORE[:10] + "..." if SHOPIFY_STORE else "NOT SET"})
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(error)))
+            self.end_headers()
+            self.wfile.write(error.encode())
+
         except Exception as e:
-            error = json.dumps({"error": str(e)})
+            import traceback
+            traceback.print_exc()
+            error = json.dumps({"error": str(e), "store": SHOPIFY_STORE[:10] + "..." if SHOPIFY_STORE else "NOT SET"})
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(error)))
