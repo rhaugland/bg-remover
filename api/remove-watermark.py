@@ -58,19 +58,26 @@ class handler(BaseHTTPRequestHandler):
                 mime = "image/png"
                 ext = "image.png"
 
-            # Run watermark removal twice for thorough cleaning
+            # Run watermark removal in 3 passes for thorough cleaning
             current_bytes = image_bytes
             current_mime = mime
             current_ext = ext
 
             passes = [
                 {
-                    "search_prompt": "dark eagle wing logo watermark stamped on the white product, semi-transparent brand overlay on the product surface",
-                    "prompt": "clean white automotive body panel surface, smooth paint finish, no logos or markings",
+                    "search_prompt": "spread eagle wings logo watermark, bird with outstretched wings overlaid on the product",
+                    "prompt": "clean smooth automotive panel, original white paint color, no markings",
+                    "negative_prompt": "watermark, logo, eagle, wings, bird, text, stamp, overlay, brand",
                 },
                 {
-                    "search_prompt": "any remaining faded text, watermark, logo, or brand stamp anywhere in the image",
-                    "prompt": "clean product photo with smooth surfaces, no watermarks or text overlays visible",
+                    "search_prompt": "semi-transparent gray or dark overlay on white surface, faded ghosted image on the product",
+                    "prompt": "pristine white automotive body panel, uniform smooth surface matching surrounding area",
+                    "negative_prompt": "watermark, shadow, overlay, stamp, logo, text, bird, eagle, wings",
+                },
+                {
+                    "search_prompt": "any remaining faint mark, shadow, discoloration, or artifact that is not part of the original product shape",
+                    "prompt": "clean product photograph, uniform surface color, no blemishes or overlays",
+                    "negative_prompt": "watermark, logo, text, stamp, bird, eagle, overlay, ghost image",
                 },
             ]
 
@@ -78,6 +85,7 @@ class handler(BaseHTTPRequestHandler):
                 fields = {
                     "prompt": p["prompt"],
                     "search_prompt": p["search_prompt"],
+                    "negative_prompt": p["negative_prompt"],
                     "output_format": "png",
                 }
                 files = {
