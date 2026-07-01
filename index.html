@@ -446,15 +446,24 @@
     let stream = null;
 
     async function startCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false
-        });
-        video.srcObject = stream;
-      } catch (err) {
-        alert('Camera access is required. Please allow camera permissions and reload.');
+      const constraints = [
+        { video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+        { video: { facingMode: 'environment' }, audio: false },
+        { video: { facingMode: 'user' }, audio: false },
+        { video: true, audio: false }
+      ];
+
+      for (const c of constraints) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(c);
+          video.srcObject = stream;
+          await video.play();
+          return;
+        } catch (err) {
+          console.warn('Constraint failed, trying next:', err.message);
+        }
       }
+      alert('Camera access is required. Please allow camera permissions and reload.');
     }
 
     function stopCamera() {
