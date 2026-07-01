@@ -1604,6 +1604,7 @@
     const reviewContent = document.getElementById('review-content');
 
     let photos = [];
+    let photosFromLookup = false;
     let stream = null;
     let cameraReady = false;
     video.setAttribute('webkit-playsinline', '');
@@ -1765,12 +1766,28 @@
           });
 
           const prog = spinnerEl.querySelector('.progress-text');
-          if (prog) prog.textContent = `Processing ${i + 1}/${photos.length}...`;
+          let imageToProcess = dataUrl;
+
+          // Remove watermarks for images from part lookup
+          if (photosFromLookup) {
+            if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
+            const wmResp = await fetch('/api/remove-watermark', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: dataUrl }),
+            });
+            if (wmResp.ok) {
+              const wmData = await wmResp.json();
+              imageToProcess = wmData.image;
+            }
+          }
+
+          if (prog) prog.textContent = `Removing background ${i + 1}/${photos.length}...`;
 
           const resp = await fetch('/api/remove-bg', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: dataUrl }),
+            body: JSON.stringify({ image: imageToProcess }),
           });
 
           if (!resp.ok) {
@@ -2701,6 +2718,7 @@
 
       // Go to processing screen with fetched images
       lookupScreen.style.display = 'none';
+      photosFromLookup = true;
       processImages();
     });
 
@@ -2710,7 +2728,7 @@
     }
 
     shutterBtn.addEventListener('click', capturePhoto);
-    nextBtn.addEventListener('click', processImages);
+    nextBtn.addEventListener('click', () => { photosFromLookup = false; processImages(); });
     backBtn.addEventListener('click', goBack);
   </script>
 </body>

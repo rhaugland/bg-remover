@@ -14,6 +14,9 @@
     },
     "api/fetch-image.py": {
       "maxDuration": 15
+    },
+    "api/remove-watermark.py": {
+      "maxDuration": 30
     }
   }
 }
