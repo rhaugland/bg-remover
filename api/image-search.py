@@ -34,18 +34,12 @@ class handler(BaseHTTPRequestHandler):
                 f"https://api.search.brave.com/res/v1/images/search?{params}",
                 headers={
                     "Accept": "application/json",
-                    "Accept-Encoding": "gzip",
                     "X-Subscription-Token": BRAVE_API_KEY,
                 },
             )
 
             with urllib.request.urlopen(req, timeout=10) as resp:
-                raw = resp.read()
-                # Handle gzip
-                if resp.headers.get("Content-Encoding") == "gzip":
-                    import gzip
-                    raw = gzip.decompress(raw)
-                data = json.loads(raw)
+                data = json.loads(resp.read())
 
             # Extract image results
             images = []
