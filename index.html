@@ -444,8 +444,6 @@
     let photos = [];
     let stream = null;
     let cameraReady = false;
-    let removeBgFn = null;
-
     video.setAttribute('webkit-playsinline', '');
 
     // ── Camera ──
@@ -540,26 +538,13 @@
       });
     }
 
-    // ── Process images — extract product, black background ──
+    // ── Process images — send to server for product extraction ──
     async function processImages() {
       cameraScreen.style.display = 'none';
       processingScreen.style.display = 'flex';
       resultsGrid.innerHTML = '';
       downloadAllBtn.style.display = 'none';
       stopCamera();
-
-      // Lazy-load @imgly/background-removal (salient object detection)
-      if (!removeBgFn) {
-        statusEl.textContent = 'Loading AI model...';
-        try {
-          const mod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/+esm');
-          removeBgFn = mod.default || mod.removeBackground;
-        } catch (err) {
-          console.error('Failed to load BG removal library:', err);
-          statusEl.textContent = 'Failed to load — try Chrome if on Safari';
-          return;
-        }
-      }
 
       const resultCanvases = [];
 
@@ -575,42 +560,43 @@
         resultsGrid.appendChild(spinnerEl);
 
         try {
-          const prog = spinnerEl.querySelector('.progress-text');
-
-          // Run background removal (IS-Net salient object detection)
-          const removedBlob = await removeBgFn(photos[i], {
-            model: 'small',
-            output: { format: 'image/png' },
-            progress: (key, current, total) => {
-              if (prog) {
-                if (key === 'downloading') {
-                  prog.textContent = 'Downloading model...';
-                } else if (key === 'compute:inference') {
-                  const pct = Math.round((current / total) * 100);
-                  prog.textContent = `Extracting product ${i + 1}/${photos.length}... ${pct}%`;
-                }
-              }
-            }
+          // Convert blob to base64
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(photos[i]);
           });
 
-          // Load the transparent PNG result into an Image
-          const imgUrl = URL.createObjectURL(removedBlob);
+          const prog = spinnerEl.querySelector('.progress-text');
+          if (prog) prog.textContent = `Processing ${i + 1}/${photos.length}...`;
+
+          // Send to our Python serverless function
+          const resp = await fetch('/api/remove-bg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataUrl }),
+          });
+
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.error || resp.statusText);
+          }
+
+          const { image: resultDataUrl } = await resp.json();
+
+          // Load result into an Image
           const img = new Image();
           await new Promise((resolve, reject) => {
             img.onload = resolve;
             img.onerror = reject;
-            img.src = imgUrl;
+            img.src = resultDataUrl;
           });
 
-          // Composite: black background + extracted product
+          // Draw to canvas
           const canvas = document.createElement('canvas');
           canvas.width = img.naturalWidth;
           canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#000000';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-          URL.revokeObjectURL(imgUrl);
+          canvas.getContext('2d').drawImage(img, 0, 0);
 
           // Build result card
           const card = document.createElement('div');
