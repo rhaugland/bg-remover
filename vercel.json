@@ -5,6 +5,9 @@
     },
     "api/shopify-create.py": {
       "maxDuration": 30
+    },
+    "api/ai-suggest.py": {
+      "maxDuration": 30
     }
   }
 }

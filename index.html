@@ -727,6 +727,51 @@
 
     .wizard-next:active { background: rgba(255,255,255,0.85); }
 
+    .ai-suggest-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.2px;
+    }
+
+    .ai-suggest-btn:active { transform: scale(0.95); }
+
+    .ai-suggest-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .ai-suggest-btn:disabled:active { transform: none; }
+
+    .ai-suggest-btn .ai-spinner {
+      display: none;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    .ai-suggest-btn.loading .ai-spinner { display: inline-block; }
+    .ai-suggest-btn.loading .ai-label { display: none; }
+
+    .form-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
     .form-group {
       display: flex;
       flex-direction: column;
@@ -1021,7 +1066,13 @@
       </div>
 
       <div class="form-group">
-        <label>Description</label>
+        <div class="form-group-header">
+          <label>Description</label>
+          <button type="button" class="ai-suggest-btn" id="ai-desc-btn" onclick="aiSuggestDescription()">
+            <span class="ai-spinner"></span>
+            <span class="ai-label">AI Suggest</span>
+          </button>
+        </div>
         <textarea id="f-description" placeholder="Describe your product..."></textarea>
       </div>
 
@@ -1103,15 +1154,23 @@
       <div class="step-subtitle">Optimize for search engines</div>
 
       <div class="form-group">
-        <label>Meta Description</label>
+        <div class="form-group-header">
+          <label>Meta Description</label>
+          <button type="button" class="ai-suggest-btn" id="ai-seo-btn" onclick="aiSuggestSeo()">
+            <span class="ai-spinner"></span>
+            <span class="ai-label">AI Suggest</span>
+          </button>
+        </div>
         <textarea id="f-meta" placeholder="SEO description for Google..." style="min-height:80px"></textarea>
         <span class="form-hint">Appears in Google search results</span>
       </div>
 
       <div class="form-group">
-        <label>SEO Tags</label>
+        <div class="form-group-header">
+          <label>SEO Tags</label>
+        </div>
         <input type="text" id="f-tags" placeholder="tag1, tag2, tag3">
-        <span class="form-hint">Comma-separated</span>
+        <span class="form-hint">Comma-separated &mdash; filled with AI Suggest above</span>
       </div>
 
       <div class="wizard-nav">
@@ -1853,6 +1912,84 @@
         processingScreen.style.display = 'flex';
       }
     });
+
+    // ── AI Suggestions ──
+    async function aiSuggestDescription() {
+      const btn = document.getElementById('ai-desc-btn');
+      const title = document.getElementById('f-title').value.trim();
+      if (!title) {
+        document.getElementById('f-title').focus();
+        document.getElementById('f-title').style.borderColor = '#ff6b6b';
+        setTimeout(() => { document.getElementById('f-title').style.borderColor = ''; }, 1500);
+        return;
+      }
+
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const resp = await fetch('/api/ai-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            field: 'description',
+            images: cachedPreviewUrls,
+          }),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || resp.statusText);
+        }
+
+        const data = await resp.json();
+        document.getElementById('f-description').value = data.description || '';
+      } catch (err) {
+        console.error('AI suggest failed:', err);
+        alert('AI suggestion failed: ' + err.message);
+      } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
+
+    async function aiSuggestSeo() {
+      const btn = document.getElementById('ai-seo-btn');
+      const title = document.getElementById('f-title').value.trim();
+      const description = document.getElementById('f-description').value.trim();
+
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const resp = await fetch('/api/ai-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            description,
+            field: 'seo',
+            images: cachedPreviewUrls,
+          }),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || resp.statusText);
+        }
+
+        const data = await resp.json();
+        if (data.meta_description) document.getElementById('f-meta').value = data.meta_description;
+        if (data.tags) document.getElementById('f-tags').value = data.tags;
+      } catch (err) {
+        console.error('AI suggest failed:', err);
+        alert('AI suggestion failed: ' + err.message);
+      } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
 
     function showReview() {
       const title = document.getElementById('f-title').value;
