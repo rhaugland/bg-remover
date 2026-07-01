@@ -332,12 +332,76 @@
       right: 0;
       text-align: center;
       font-size: 11px;
-      color: rgba(255,255,255,0.25);
+      color: rgba(128,128,128,0.6);
       pointer-events: none;
       transition: opacity 0.3s;
     }
 
     .drag-stage.dragged .drag-hint { opacity: 0; }
+
+    /* ── Background color picker ── */
+    .bg-picker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .bg-picker-label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      margin-right: 4px;
+      white-space: nowrap;
+    }
+
+    .bg-swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.15);
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+      flex-shrink: 0;
+      -webkit-appearance: none;
+      padding: 0;
+      outline: none;
+    }
+
+    .bg-swatch:active { transform: scale(0.9); }
+
+    .bg-swatch.active {
+      border-color: #fff;
+      border-width: 3px;
+    }
+
+    .bg-custom-input {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.15);
+      cursor: pointer;
+      padding: 0;
+      overflow: hidden;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .bg-custom-input.active {
+      border-color: #fff;
+      border-width: 3px;
+    }
+
+    .bg-custom-input input {
+      position: absolute;
+      inset: -4px;
+      width: 36px;
+      height: 36px;
+      border: none;
+      cursor: pointer;
+      -webkit-appearance: none;
+      padding: 0;
+    }
 
     .result-actions {
       padding: 12px 14px;
@@ -641,8 +705,11 @@
           stage.appendChild(hint);
 
           // Center product initially after stage is in DOM
-          const item = { stage, productImg, img, index: i + 1, x: 0, y: 0 };
+          const item = { stage, productImg, img, index: i + 1, x: 0, y: 0, bgColor: '#000000' };
           makeDraggable(item);
+
+          // Background color picker
+          const picker = buildBgPicker(item);
 
           const actions = document.createElement('div');
           actions.className = 'result-actions';
@@ -658,6 +725,7 @@
           actions.appendChild(label);
           actions.appendChild(dlBtn);
           card.appendChild(stage);
+          card.appendChild(picker);
           card.appendChild(actions);
           spinnerEl.replaceWith(card);
 
@@ -688,6 +756,67 @@
           resultItems.forEach(r => saveResult(r));
         };
       }
+    }
+
+    // ── Background color picker ──
+    const presetColors = [
+      { color: '#000000', label: 'Black' },
+      { color: '#FFFFFF', label: 'White' },
+      { color: '#F5F5F5', label: 'Light gray' },
+      { color: '#1a1a2e', label: 'Navy' },
+    ];
+
+    function buildBgPicker(item) {
+      const row = document.createElement('div');
+      row.className = 'bg-picker';
+
+      const lbl = document.createElement('span');
+      lbl.className = 'bg-picker-label';
+      lbl.textContent = 'BG';
+      row.appendChild(lbl);
+
+      const swatches = [];
+
+      presetColors.forEach(({ color }) => {
+        const btn = document.createElement('button');
+        btn.className = 'bg-swatch' + (color === item.bgColor ? ' active' : '');
+        btn.style.background = color;
+        btn.onclick = () => {
+          item.bgColor = color;
+          item.stage.style.background = color;
+          swatches.forEach(s => s.classList.remove('active'));
+          customWrap.classList.remove('active');
+          btn.classList.add('active');
+        };
+        swatches.push(btn);
+        row.appendChild(btn);
+      });
+
+      // Custom color input
+      const customWrap = document.createElement('div');
+      customWrap.className = 'bg-custom-input';
+      customWrap.style.background = '#ff6600';
+      const customInput = document.createElement('input');
+      customInput.type = 'color';
+      customInput.value = '#ff6600';
+      customInput.onchange = () => {
+        item.bgColor = customInput.value;
+        item.stage.style.background = customInput.value;
+        customWrap.style.background = customInput.value;
+        swatches.forEach(s => s.classList.remove('active'));
+        customWrap.classList.add('active');
+      };
+      customInput.oninput = () => {
+        item.bgColor = customInput.value;
+        item.stage.style.background = customInput.value;
+        customWrap.style.background = customInput.value;
+        swatches.forEach(s => s.classList.remove('active'));
+        customWrap.classList.add('active');
+      };
+      customWrap.appendChild(customInput);
+      row.appendChild(customWrap);
+
+      return row;
     }
 
     // ── Drag to reposition ──
@@ -764,8 +893,7 @@
       canvas.height = sh * scale;
       const ctx = canvas.getContext('2d');
 
-      // Black background
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = item.bgColor || '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Draw product at its dragged position, scaled
