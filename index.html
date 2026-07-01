@@ -943,11 +943,53 @@
       font-size: 15px;
       color: #fff;
       line-height: 1.5;
+      cursor: pointer;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .review-field-value:hover {
+      border-color: rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.03);
     }
 
     .review-field-value.empty {
       color: rgba(255,255,255,0.15);
       font-style: italic;
+    }
+
+    .review-edit-input,
+    .review-edit-textarea {
+      width: 100%;
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 15px;
+      color: #fff;
+      font-family: inherit;
+      outline: none;
+      -webkit-appearance: none;
+      transition: border-color 0.15s;
+    }
+
+    .review-edit-input:focus,
+    .review-edit-textarea:focus {
+      border-color: rgba(255,255,255,0.4);
+    }
+
+    .review-edit-textarea {
+      min-height: 70px;
+      resize: vertical;
+    }
+
+    .review-edit-hint {
+      font-size: 10px;
+      color: rgba(255,255,255,0.15);
+      margin-top: 2px;
+      text-align: right;
     }
 
     .review-divider {
@@ -2037,73 +2079,169 @@
       }
     }
 
+    function makeEditable(container, fieldId, value, displayFn, inputType) {
+      const display = document.createElement('span');
+      display.className = 'review-field-value' + (value ? '' : ' empty');
+      display.textContent = displayFn(value);
+
+      display.addEventListener('click', () => {
+        const isTextarea = inputType === 'textarea';
+        const input = document.createElement(isTextarea ? 'textarea' : 'input');
+        input.className = isTextarea ? 'review-edit-textarea' : 'review-edit-input';
+        if (!isTextarea) input.type = inputType || 'text';
+        if (inputType === 'number') input.step = fieldId === 'f-price' ? '0.01' : '0.1';
+        input.value = value;
+
+        const hint = document.createElement('div');
+        hint.className = 'review-edit-hint';
+        hint.textContent = 'Tap outside to save';
+
+        display.replaceWith(input);
+        container.appendChild(hint);
+        input.focus();
+
+        const save = () => {
+          value = input.value;
+          document.getElementById(fieldId).value = value;
+          display.textContent = displayFn(value);
+          display.className = 'review-field-value' + (value ? '' : ' empty');
+          input.replaceWith(display);
+          hint.remove();
+        };
+
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !isTextarea) { e.preventDefault(); input.blur(); }
+        });
+      });
+
+      container.appendChild(display);
+    }
+
     function showReview() {
       const title = document.getElementById('f-title').value;
       const description = document.getElementById('f-description').value;
       const price = document.getElementById('f-price').value;
       const weight = document.getElementById('f-weight').value;
       const categoryEl = document.getElementById('f-category');
-      const category = categoryEl.options[categoryEl.selectedIndex]?.text || '';
+      const categoryVal = categoryEl.value;
+      const categoryText = categoryEl.options[categoryEl.selectedIndex]?.text || '';
       const collectionEl = document.getElementById('f-collection');
-      const collection = collectionEl.value ? collectionEl.options[collectionEl.selectedIndex]?.text : '';
+      const collectionVal = collectionEl.value;
+      const collectionText = collectionVal ? collectionEl.options[collectionEl.selectedIndex]?.text : '';
       const meta = document.getElementById('f-meta').value;
       const tags = document.getElementById('f-tags').value;
 
-      // Build review HTML using cached preview URLs
-      let html = '<div class="review-images">';
+      reviewContent.innerHTML = '';
+
+      // Images
+      const imgsDiv = document.createElement('div');
+      imgsDiv.className = 'review-images';
       cachedPreviewUrls.forEach(url => {
-        html += `<img src="${url}">`;
+        const img = document.createElement('img');
+        img.src = url;
+        imgsDiv.appendChild(img);
       });
-      html += '</div>';
+      reviewContent.appendChild(imgsDiv);
 
-      html += `
-        <div class="review-field">
-          <span class="review-field-label">Title</span>
-          <span class="review-field-value">${esc(title)}</span>
-        </div>
-        <div class="review-divider"></div>
-        <div class="review-field">
-          <span class="review-field-label">Description</span>
-          <span class="review-field-value ${description ? '' : 'empty'}">${description ? esc(description) : 'No description'}</span>
-        </div>
-        <div class="review-divider"></div>
-        <div class="review-row">
-          <div class="review-field">
-            <span class="review-field-label">Price</span>
-            <span class="review-field-value">${price ? '$' + parseFloat(price).toFixed(2) : '$0.00'}</span>
-          </div>
-          <div class="review-field">
-            <span class="review-field-label">Weight</span>
-            <span class="review-field-value ${weight ? '' : 'empty'}">${weight ? weight + ' lbs' : 'Not set'}</span>
-          </div>
-        </div>
-        <div class="review-divider"></div>
-        <div class="review-row">
-          <div class="review-field">
-            <span class="review-field-label">Category</span>
-            <span class="review-field-value ${category && category !== 'Select category...' ? '' : 'empty'}">${category && category !== 'Select category...' ? esc(category) : 'None'}</span>
-          </div>
-          <div class="review-field">
-            <span class="review-field-label">Collection</span>
-            <span class="review-field-value ${collection ? '' : 'empty'}">${collection ? esc(collection) : 'None'}</span>
-          </div>
-        </div>
-        <div class="review-divider"></div>
-        <div class="review-field">
-          <span class="review-field-label">Meta Description</span>
-          <span class="review-field-value ${meta ? '' : 'empty'}">${meta ? esc(meta) : 'Not set'}</span>
-        </div>
-        <div class="review-divider"></div>
-        <div class="review-field">
-          <span class="review-field-label">SEO Tags</span>
-          <span class="review-field-value ${tags ? '' : 'empty'}">${tags ? esc(tags) : 'None'}</span>
-        </div>
-      `;
+      // Title
+      const titleField = document.createElement('div');
+      titleField.className = 'review-field';
+      titleField.innerHTML = '<span class="review-field-label">Title</span>';
+      makeEditable(titleField, 'f-title', title, v => v || 'No title', 'text');
+      reviewContent.appendChild(titleField);
+      reviewContent.appendChild(makeDivider());
 
-      reviewContent.innerHTML = html;
+      // Description
+      const descField = document.createElement('div');
+      descField.className = 'review-field';
+      descField.innerHTML = '<span class="review-field-label">Description</span>';
+      makeEditable(descField, 'f-description', description, v => v || 'No description', 'textarea');
+      reviewContent.appendChild(descField);
+      reviewContent.appendChild(makeDivider());
+
+      // Price + Weight row
+      const priceRow = document.createElement('div');
+      priceRow.className = 'review-row';
+
+      const priceField = document.createElement('div');
+      priceField.className = 'review-field';
+      priceField.innerHTML = '<span class="review-field-label">Price</span>';
+      makeEditable(priceField, 'f-price', price, v => v ? '$' + parseFloat(v).toFixed(2) : '$0.00', 'number');
+
+      const weightField = document.createElement('div');
+      weightField.className = 'review-field';
+      weightField.innerHTML = '<span class="review-field-label">Weight</span>';
+      makeEditable(weightField, 'f-weight', weight, v => v ? v + ' lbs' : 'Not set', 'number');
+
+      priceRow.appendChild(priceField);
+      priceRow.appendChild(weightField);
+      reviewContent.appendChild(priceRow);
+      reviewContent.appendChild(makeDivider());
+
+      // Category + Collection row
+      const catRow = document.createElement('div');
+      catRow.className = 'review-row';
+
+      const catField = document.createElement('div');
+      catField.className = 'review-field';
+      catField.innerHTML = '<span class="review-field-label">Category</span>';
+      const catDisplay = document.createElement('span');
+      catDisplay.className = 'review-field-value' + (categoryText && categoryText !== 'Select category...' ? '' : ' empty');
+      catDisplay.textContent = categoryText && categoryText !== 'Select category...' ? categoryText : 'None';
+      catField.appendChild(catDisplay);
+
+      const colField = document.createElement('div');
+      colField.className = 'review-field';
+      colField.innerHTML = '<span class="review-field-label">Collection</span>';
+      const colDisplay = document.createElement('span');
+      colDisplay.className = 'review-field-value' + (collectionText ? '' : ' empty');
+      colDisplay.textContent = collectionText || 'None';
+      colField.appendChild(colDisplay);
+
+      // Tap category to go back to step 3
+      catDisplay.addEventListener('click', () => {
+        reviewScreen.style.display = 'none';
+        productScreen.style.display = 'flex';
+        wizardStep = 2;
+        updateWizardUI();
+      });
+      colDisplay.addEventListener('click', () => {
+        reviewScreen.style.display = 'none';
+        productScreen.style.display = 'flex';
+        wizardStep = 2;
+        updateWizardUI();
+      });
+
+      catRow.appendChild(catField);
+      catRow.appendChild(colField);
+      reviewContent.appendChild(catRow);
+      reviewContent.appendChild(makeDivider());
+
+      // Meta Description
+      const metaField = document.createElement('div');
+      metaField.className = 'review-field';
+      metaField.innerHTML = '<span class="review-field-label">Meta Description</span>';
+      makeEditable(metaField, 'f-meta', meta, v => v || 'Not set', 'textarea');
+      reviewContent.appendChild(metaField);
+      reviewContent.appendChild(makeDivider());
+
+      // SEO Tags
+      const tagsField = document.createElement('div');
+      tagsField.className = 'review-field';
+      tagsField.innerHTML = '<span class="review-field-label">SEO Tags</span>';
+      makeEditable(tagsField, 'f-tags', tags, v => v || 'None', 'text');
+      reviewContent.appendChild(tagsField);
+
       productScreen.style.display = 'none';
       reviewScreen.style.display = 'flex';
       window.scrollTo(0, 0);
+    }
+
+    function makeDivider() {
+      const d = document.createElement('div');
+      d.className = 'review-divider';
+      return d;
     }
 
     function esc(str) {
