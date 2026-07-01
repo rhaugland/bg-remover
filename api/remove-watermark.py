@@ -2,9 +2,11 @@ from http.server import BaseHTTPRequestHandler
 import json
 import os
 import base64
+import io
 import urllib.request
 import urllib.error
 import uuid
+from PIL import Image, ImageDraw, ImageFilter
 
 STABILITY_API_KEY = os.environ.get("STABILITY_API_KEY", "")
 
@@ -30,6 +32,75 @@ def build_multipart(fields, files):
     return body, content_type
 
 
+def detect_watermark_mask(image_bytes):
+    """Detect semi-transparent watermark regions and create a mask for inpainting."""
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    w, h = img.size
+    gray = img.convert("L")
+
+    # Create mask - start with all black (keep everything)
+    mask = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(mask)
+
+    # Strategy: detect areas with subtle contrast variations typical of watermarks
+    # Watermarks create a consistent semi-transparent overlay pattern
+    # We look for areas where local contrast differs from neighbors in a watermark-like way
+
+    pixels = gray.load()
+    mask_pixels = mask.load()
+
+    # Scan for watermark-like patterns: areas where pixel values
+    # deviate slightly from their local neighborhood average
+    # (watermarks create consistent low-amplitude patterns)
+    block = 8
+    threshold_low = 3   # minimum deviation to consider
+    threshold_high = 40  # maximum deviation (real edges are higher)
+
+    for by in range(block, h - block, block):
+        for bx in range(block, w - block, block):
+            # Get center block average
+            center_sum = 0
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    center_sum += pixels[bx + dx, by + dy]
+            center_avg = center_sum / 9
+
+            # Get surrounding average (larger radius)
+            surround_sum = 0
+            count = 0
+            for dy in range(-block, block + 1, 2):
+                for dx in range(-block, block + 1, 2):
+                    nx, ny = bx + dx, by + dy
+                    if 0 <= nx < w and 0 <= ny < h:
+                        surround_sum += pixels[nx, ny]
+                        count += 1
+            surround_avg = surround_sum / max(count, 1)
+
+            diff = abs(center_avg - surround_avg)
+            if threshold_low < diff < threshold_high:
+                # Mark this block as potential watermark
+                for dy in range(-block // 2, block // 2 + 1):
+                    for dx in range(-block // 2, block // 2 + 1):
+                        nx, ny = bx + dx, by + dy
+                        if 0 <= nx < w and 0 <= ny < h:
+                            mask_pixels[nx, ny] = 255
+
+    # Also add a generous ellipse covering the typical watermark region
+    # (center-bottom area where vendor watermarks usually sit)
+    cx, cy = w // 2, int(h * 0.55)
+    rx, ry = int(w * 0.35), int(h * 0.25)
+    draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=255)
+
+    # Dilate the mask to ensure full coverage
+    mask = mask.filter(ImageFilter.MaxFilter(15))
+    # Blur edges for smooth inpainting transitions
+    mask = mask.filter(ImageFilter.GaussianBlur(radius=8))
+
+    buf = io.BytesIO()
+    mask.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
@@ -47,74 +118,39 @@ class handler(BaseHTTPRequestHandler):
             if "," in image_data_url:
                 header, b64data = image_data_url.split(",", 1)
                 image_bytes = base64.b64decode(b64data)
-                if "png" in header:
-                    mime = "image/png"
-                    ext = "image.png"
-                else:
-                    mime = "image/jpeg"
-                    ext = "image.jpg"
             else:
                 image_bytes = base64.b64decode(image_data_url)
-                mime = "image/png"
-                ext = "image.png"
 
-            # Run watermark removal in 3 passes for thorough cleaning
-            current_bytes = image_bytes
-            current_mime = mime
-            current_ext = ext
+            # Generate watermark mask
+            mask_bytes = detect_watermark_mask(image_bytes)
 
-            passes = [
-                {
-                    "search_prompt": "spread eagle wings logo watermark, bird with outstretched wings overlaid on the product",
-                    "prompt": "clean smooth automotive panel, original white paint color, no markings",
-                    "negative_prompt": "watermark, logo, eagle, wings, bird, text, stamp, overlay, brand",
+            # Use Stability AI erase endpoint with the detected mask
+            fields = {
+                "output_format": "png",
+            }
+            files = {
+                "image": ("image.png", image_bytes, "image/png"),
+                "mask": ("mask.png", mask_bytes, "image/png"),
+            }
+
+            req_body, content_type = build_multipart(fields, files)
+
+            req = urllib.request.Request(
+                "https://api.stability.ai/v2beta/stable-image/edit/erase",
+                data=req_body,
+                headers={
+                    "Authorization": f"Bearer {STABILITY_API_KEY}",
+                    "Content-Type": content_type,
+                    "Accept": "image/*",
                 },
-                {
-                    "search_prompt": "semi-transparent gray or dark overlay on white surface, faded ghosted image on the product",
-                    "prompt": "pristine white automotive body panel, uniform smooth surface matching surrounding area",
-                    "negative_prompt": "watermark, shadow, overlay, stamp, logo, text, bird, eagle, wings",
-                },
-                {
-                    "search_prompt": "any remaining faint mark, shadow, discoloration, or artifact that is not part of the original product shape",
-                    "prompt": "clean product photograph, uniform surface color, no blemishes or overlays",
-                    "negative_prompt": "watermark, logo, text, stamp, bird, eagle, overlay, ghost image",
-                },
-            ]
+                method="POST",
+            )
 
-            for p in passes:
-                fields = {
-                    "prompt": p["prompt"],
-                    "search_prompt": p["search_prompt"],
-                    "negative_prompt": p["negative_prompt"],
-                    "output_format": "png",
-                }
-                files = {
-                    "image": (current_ext, current_bytes, current_mime),
-                }
-
-                req_body, content_type = build_multipart(fields, files)
-
-                req = urllib.request.Request(
-                    "https://api.stability.ai/v2beta/stable-image/edit/search-and-replace",
-                    data=req_body,
-                    headers={
-                        "Authorization": f"Bearer {STABILITY_API_KEY}",
-                        "Content-Type": content_type,
-                        "Accept": "image/*",
-                    },
-                    method="POST",
-                )
-
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    current_bytes = resp.read()
-                    current_mime = "image/png"
-                    current_ext = "image.png"
-
-            result_bytes = current_bytes
-            result_ct = "image/png"
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result_bytes = resp.read()
 
             result_b64 = base64.b64encode(result_bytes).decode()
-            result_data_url = f"data:{result_ct};base64,{result_b64}"
+            result_data_url = f"data:image/png;base64,{result_b64}"
 
             response = json.dumps({"image": result_data_url})
             self.send_response(200)
