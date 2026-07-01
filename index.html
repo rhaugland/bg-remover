@@ -451,6 +451,36 @@
       pointer-events: none;
     }
 
+    .drag-stage .watermark-img {
+      position: absolute;
+      width: 40%;
+      max-width: none;
+      max-height: none;
+      opacity: 0.5;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .drag-mode-toggle {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      z-index: 10;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .drag-mode-toggle.active-watermark {
+      background: rgba(255,140,0,0.7);
+      border-color: rgba(255,140,0,0.9);
+    }
+
     .drag-hint {
       position: absolute;
       bottom: 10px;
@@ -1816,15 +1846,40 @@
           productImg.src = resultDataUrl;
           productImg.draggable = false;
 
+          const watermarkImg = document.createElement('img');
+          watermarkImg.className = 'watermark-img';
+          watermarkImg.src = '/watermark.png';
+          watermarkImg.draggable = false;
+
+          const modeToggle = document.createElement('button');
+          modeToggle.className = 'drag-mode-toggle';
+          modeToggle.textContent = 'Move: Product';
+
           const hint = document.createElement('div');
           hint.className = 'drag-hint';
           hint.textContent = 'Drag to move \u00b7 Pinch to resize';
 
           stage.appendChild(productImg);
+          stage.appendChild(watermarkImg);
+          stage.appendChild(modeToggle);
           stage.appendChild(hint);
 
           // Center product initially after stage is in DOM
-          const item = { stage, productImg, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000', sharpness: 0, originalDataUrl: resultDataUrl, originalImg: img };
+          const item = { stage, productImg, watermarkImg, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000', sharpness: 0, originalDataUrl: resultDataUrl, originalImg: img, wmX: 0, wmY: 0, wmScale: 1, dragMode: 'product' };
+          modeToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (item.dragMode === 'product') {
+              item.dragMode = 'watermark';
+              modeToggle.textContent = 'Move: Watermark';
+              modeToggle.classList.add('active-watermark');
+              watermarkImg.style.outline = '2px dashed rgba(255,140,0,0.8)';
+            } else {
+              item.dragMode = 'product';
+              modeToggle.textContent = 'Move: Product';
+              modeToggle.classList.remove('active-watermark');
+              watermarkImg.style.outline = 'none';
+            }
+          });
           makeDraggable(item);
 
           // Background color picker
@@ -1860,6 +1915,13 @@
             item.y = (sh - ih) / 2;
             productImg.style.left = item.x + 'px';
             productImg.style.top = item.y + 'px';
+            // Position watermark bottom-right by default
+            const wmW = watermarkImg.offsetWidth;
+            const wmH = watermarkImg.offsetHeight;
+            item.wmX = sw - wmW - 10;
+            item.wmY = sh - wmH - 10;
+            watermarkImg.style.left = item.wmX + 'px';
+            watermarkImg.style.top = item.wmY + 'px';
           });
 
           resultItems.push(item);
@@ -1944,7 +2006,7 @@
 
     // ── Drag + pinch-to-resize ──
     function makeDraggable(item) {
-      const { stage, productImg } = item;
+      const { stage, productImg, watermarkImg } = item;
       let dragging = false;
       let pinching = false;
       let startX, startY, origX, origY;
@@ -1955,6 +2017,28 @@
         productImg.style.top = item.y + 'px';
         productImg.style.transform = `scale(${item.imgScale})`;
         productImg.style.transformOrigin = '0 0';
+        if (watermarkImg) {
+          watermarkImg.style.left = item.wmX + 'px';
+          watermarkImg.style.top = item.wmY + 'px';
+          watermarkImg.style.transform = `scale(${item.wmScale})`;
+          watermarkImg.style.transformOrigin = '0 0';
+        }
+      }
+
+      function getPos() {
+        if (item.dragMode === 'watermark') return { x: item.wmX, y: item.wmY };
+        return { x: item.x, y: item.y };
+      }
+      function setPos(nx, ny) {
+        if (item.dragMode === 'watermark') { item.wmX = nx; item.wmY = ny; }
+        else { item.x = nx; item.y = ny; }
+      }
+      function getScale() {
+        return item.dragMode === 'watermark' ? item.wmScale : item.imgScale;
+      }
+      function setScale(s) {
+        if (item.dragMode === 'watermark') item.wmScale = s;
+        else item.imgScale = s;
       }
 
       function getTouchDist(t1, t2) {
@@ -1974,6 +2058,7 @@
       stage.addEventListener('touchstart', (e) => {
         e.preventDefault();
         stage.classList.add('dragged');
+        const pos = getPos();
 
         if (e.touches.length === 1) {
           dragging = true;
@@ -1981,19 +2066,19 @@
           const rect = stage.getBoundingClientRect();
           startX = e.touches[0].clientX - rect.left;
           startY = e.touches[0].clientY - rect.top;
-          origX = item.x;
-          origY = item.y;
+          origX = pos.x;
+          origY = pos.y;
         } else if (e.touches.length === 2) {
           dragging = false;
           pinching = true;
           startDist = getTouchDist(e.touches[0], e.touches[1]);
-          origScale = item.imgScale;
+          origScale = getScale();
           const rect = stage.getBoundingClientRect();
           const center = getTouchCenter(e.touches[0], e.touches[1]);
           startX = center.x - rect.left;
           startY = center.y - rect.top;
-          origX = item.x;
-          origY = item.y;
+          origX = pos.x;
+          origY = pos.y;
         }
       }, { passive: false });
 
@@ -2004,35 +2089,32 @@
           const rect = stage.getBoundingClientRect();
           const cx = e.touches[0].clientX - rect.left;
           const cy = e.touches[0].clientY - rect.top;
-          item.x = origX + (cx - startX);
-          item.y = origY + (cy - startY);
+          setPos(origX + (cx - startX), origY + (cy - startY));
           applyTransform();
         } else if (e.touches.length === 2) {
-          // Switch to pinch if started as drag
           if (!pinching) {
             pinching = true;
             dragging = false;
             startDist = getTouchDist(e.touches[0], e.touches[1]);
-            origScale = item.imgScale;
+            origScale = getScale();
             const rect = stage.getBoundingClientRect();
             const center = getTouchCenter(e.touches[0], e.touches[1]);
             startX = center.x - rect.left;
             startY = center.y - rect.top;
-            origX = item.x;
-            origY = item.y;
+            const pos = getPos();
+            origX = pos.x;
+            origY = pos.y;
           }
 
           const dist = getTouchDist(e.touches[0], e.touches[1]);
           const scaleFactor = dist / startDist;
-          item.imgScale = Math.max(0.1, Math.min(5, origScale * scaleFactor));
+          setScale(Math.max(0.1, Math.min(5, origScale * scaleFactor)));
 
-          // Pan with pinch center
           const rect = stage.getBoundingClientRect();
           const center = getTouchCenter(e.touches[0], e.touches[1]);
           const cx = center.x - rect.left;
           const cy = center.y - rect.top;
-          item.x = origX + (cx - startX);
-          item.y = origY + (cy - startY);
+          setPos(origX + (cx - startX), origY + (cy - startY));
 
           applyTransform();
         }
@@ -2043,14 +2125,14 @@
           dragging = false;
           pinching = false;
         } else if (e.touches.length === 1) {
-          // Went from pinch back to one finger — restart drag
           pinching = false;
           dragging = true;
           const rect = stage.getBoundingClientRect();
           startX = e.touches[0].clientX - rect.left;
           startY = e.touches[0].clientY - rect.top;
-          origX = item.x;
-          origY = item.y;
+          const pos = getPos();
+          origX = pos.x;
+          origY = pos.y;
         }
       });
 
@@ -2062,8 +2144,9 @@
         const rect = stage.getBoundingClientRect();
         startX = e.clientX - rect.left;
         startY = e.clientY - rect.top;
-        origX = item.x;
-        origY = item.y;
+        const pos = getPos();
+        origX = pos.x;
+        origY = pos.y;
       });
 
       window.addEventListener('mousemove', (e) => {
@@ -2071,8 +2154,7 @@
         const rect = stage.getBoundingClientRect();
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
-        item.x = origX + (cx - startX);
-        item.y = origY + (cy - startY);
+        setPos(origX + (cx - startX), origY + (cy - startY));
         applyTransform();
       });
 
@@ -2083,7 +2165,7 @@
         e.preventDefault();
         stage.classList.add('dragged');
         const delta = e.deltaY > 0 ? 0.95 : 1.05;
-        item.imgScale = Math.max(0.1, Math.min(5, item.imgScale * delta));
+        setScale(Math.max(0.1, Math.min(5, getScale() * delta)));
         applyTransform();
       }, { passive: false });
     }
@@ -2186,8 +2268,11 @@
     }
 
     // ── Render item to canvas data URL ──
+    const watermarkImgLoaded = new Image();
+    watermarkImgLoaded.src = '/watermark.png';
+
     function renderItemToDataUrl(item) {
-      const { stage, productImg, x, y, imgScale } = item;
+      const { stage, productImg, watermarkImg, x, y, imgScale } = item;
       const sw = stage.offsetWidth;
       const sh = stage.offsetHeight;
       if (!sw || !sh) return '';
@@ -2201,8 +2286,18 @@
       const baseW = productImg.offsetWidth;
       const baseH = productImg.offsetHeight;
 
-      // Use the current productImg src (already sharpened if slider was used)
+      // Draw product
       ctx.drawImage(productImg, x * renderScale, y * renderScale, baseW * imgScale * renderScale, baseH * imgScale * renderScale);
+
+      // Draw watermark
+      if (watermarkImg && watermarkImgLoaded.complete) {
+        const wmW = watermarkImg.offsetWidth;
+        const wmH = watermarkImg.offsetHeight;
+        ctx.globalAlpha = 0.5;
+        ctx.drawImage(watermarkImgLoaded, item.wmX * renderScale, item.wmY * renderScale, wmW * item.wmScale * renderScale, wmH * item.wmScale * renderScale);
+        ctx.globalAlpha = 1.0;
+      }
+
       return canvas.toDataURL('image/png');
     }
 
