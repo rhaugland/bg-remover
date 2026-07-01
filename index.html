@@ -426,8 +426,8 @@
     <div id="results-grid"></div>
   </div>
 
-  <script type="module">
-    import imglyRemoveBackground from 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm';
+  <script>
+    let imglyRemoveBackground = null;
 
     const video = document.getElementById('camera');
     const shutterBtn = document.getElementById('shutter-btn');
@@ -547,6 +547,19 @@
       resultsGrid.innerHTML = '';
       downloadAllBtn.style.display = 'none';
       stopCamera();
+
+      // Lazy-load the BG removal library on first use
+      if (!imglyRemoveBackground) {
+        statusEl.textContent = 'Loading AI model...';
+        try {
+          const mod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm');
+          imglyRemoveBackground = mod.default;
+        } catch (err) {
+          console.error('Failed to load BG removal library:', err);
+          statusEl.textContent = 'Failed to load AI model';
+          return;
+        }
+      }
 
       const resultBlobs = [];
 
