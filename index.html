@@ -789,13 +789,13 @@
 
           const hint = document.createElement('div');
           hint.className = 'drag-hint';
-          hint.textContent = 'Drag to reposition';
+          hint.textContent = 'Drag to move \u00b7 Pinch to resize';
 
           stage.appendChild(productImg);
           stage.appendChild(hint);
 
           // Center product initially after stage is in DOM
-          const item = { stage, productImg, img, index: i + 1, x: 0, y: 0, bgColor: '#000000' };
+          const item = { stage, productImg, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000' };
           makeDraggable(item);
 
           // Background color picker
@@ -909,87 +909,174 @@
       return row;
     }
 
-    // ── Drag to reposition ──
+    // ── Drag + pinch-to-resize ──
     function makeDraggable(item) {
       const { stage, productImg } = item;
       let dragging = false;
+      let pinching = false;
       let startX, startY, origX, origY;
+      let startDist, origScale;
 
-      function onStart(clientX, clientY) {
-        dragging = true;
-        stage.classList.add('dragged');
-        const rect = stage.getBoundingClientRect();
-        startX = clientX - rect.left;
-        startY = clientY - rect.top;
-        origX = item.x;
-        origY = item.y;
-      }
-
-      function onMove(clientX, clientY) {
-        if (!dragging) return;
-        const rect = stage.getBoundingClientRect();
-        const cx = clientX - rect.left;
-        const cy = clientY - rect.top;
-        item.x = origX + (cx - startX);
-        item.y = origY + (cy - startY);
+      function applyTransform() {
         productImg.style.left = item.x + 'px';
         productImg.style.top = item.y + 'px';
+        productImg.style.transform = `scale(${item.imgScale})`;
+        productImg.style.transformOrigin = '0 0';
       }
 
-      function onEnd() {
-        dragging = false;
+      function getTouchDist(t1, t2) {
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function getTouchCenter(t1, t2) {
+        return {
+          x: (t1.clientX + t2.clientX) / 2,
+          y: (t1.clientY + t2.clientY) / 2,
+        };
       }
 
       // Touch events
       stage.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        stage.classList.add('dragged');
+
         if (e.touches.length === 1) {
-          e.preventDefault();
-          onStart(e.touches[0].clientX, e.touches[0].clientY);
+          dragging = true;
+          pinching = false;
+          const rect = stage.getBoundingClientRect();
+          startX = e.touches[0].clientX - rect.left;
+          startY = e.touches[0].clientY - rect.top;
+          origX = item.x;
+          origY = item.y;
+        } else if (e.touches.length === 2) {
+          dragging = false;
+          pinching = true;
+          startDist = getTouchDist(e.touches[0], e.touches[1]);
+          origScale = item.imgScale;
+          const rect = stage.getBoundingClientRect();
+          const center = getTouchCenter(e.touches[0], e.touches[1]);
+          startX = center.x - rect.left;
+          startY = center.y - rect.top;
+          origX = item.x;
+          origY = item.y;
         }
       }, { passive: false });
 
       stage.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+
         if (dragging && e.touches.length === 1) {
-          e.preventDefault();
-          onMove(e.touches[0].clientX, e.touches[0].clientY);
+          const rect = stage.getBoundingClientRect();
+          const cx = e.touches[0].clientX - rect.left;
+          const cy = e.touches[0].clientY - rect.top;
+          item.x = origX + (cx - startX);
+          item.y = origY + (cy - startY);
+          applyTransform();
+        } else if (e.touches.length === 2) {
+          // Switch to pinch if started as drag
+          if (!pinching) {
+            pinching = true;
+            dragging = false;
+            startDist = getTouchDist(e.touches[0], e.touches[1]);
+            origScale = item.imgScale;
+            const rect = stage.getBoundingClientRect();
+            const center = getTouchCenter(e.touches[0], e.touches[1]);
+            startX = center.x - rect.left;
+            startY = center.y - rect.top;
+            origX = item.x;
+            origY = item.y;
+          }
+
+          const dist = getTouchDist(e.touches[0], e.touches[1]);
+          const scaleFactor = dist / startDist;
+          item.imgScale = Math.max(0.1, Math.min(5, origScale * scaleFactor));
+
+          // Pan with pinch center
+          const rect = stage.getBoundingClientRect();
+          const center = getTouchCenter(e.touches[0], e.touches[1]);
+          const cx = center.x - rect.left;
+          const cy = center.y - rect.top;
+          item.x = origX + (cx - startX);
+          item.y = origY + (cy - startY);
+
+          applyTransform();
         }
       }, { passive: false });
 
-      stage.addEventListener('touchend', onEnd);
+      stage.addEventListener('touchend', (e) => {
+        if (e.touches.length === 0) {
+          dragging = false;
+          pinching = false;
+        } else if (e.touches.length === 1) {
+          // Went from pinch back to one finger — restart drag
+          pinching = false;
+          dragging = true;
+          const rect = stage.getBoundingClientRect();
+          startX = e.touches[0].clientX - rect.left;
+          startY = e.touches[0].clientY - rect.top;
+          origX = item.x;
+          origY = item.y;
+        }
+      });
 
-      // Mouse events
+      // Mouse drag
       stage.addEventListener('mousedown', (e) => {
         e.preventDefault();
-        onStart(e.clientX, e.clientY);
+        dragging = true;
+        stage.classList.add('dragged');
+        const rect = stage.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+        origX = item.x;
+        origY = item.y;
       });
 
       window.addEventListener('mousemove', (e) => {
-        onMove(e.clientX, e.clientY);
+        if (!dragging) return;
+        const rect = stage.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        item.x = origX + (cx - startX);
+        item.y = origY + (cy - startY);
+        applyTransform();
       });
 
-      window.addEventListener('mouseup', onEnd);
+      window.addEventListener('mouseup', () => { dragging = false; });
+
+      // Mouse wheel zoom (desktop)
+      stage.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        stage.classList.add('dragged');
+        const delta = e.deltaY > 0 ? 0.95 : 1.05;
+        item.imgScale = Math.max(0.1, Math.min(5, item.imgScale * delta));
+        applyTransform();
+      }, { passive: false });
     }
 
     // ── Render final position to canvas and download ──
     function saveResult(item) {
-      const { stage, productImg, img, index, x, y } = item;
+      const { stage, productImg, img, index, x, y, imgScale } = item;
       const sw = stage.offsetWidth;
       const sh = stage.offsetHeight;
 
       // Render at high resolution (2x for retina)
-      const scale = 2;
+      const renderScale = 2;
       const canvas = document.createElement('canvas');
-      canvas.width = sw * scale;
-      canvas.height = sh * scale;
+      canvas.width = sw * renderScale;
+      canvas.height = sh * renderScale;
       const ctx = canvas.getContext('2d');
 
       ctx.fillStyle = item.bgColor || '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw product at its dragged position, scaled
-      const imgDisplayW = productImg.offsetWidth;
-      const imgDisplayH = productImg.offsetHeight;
-      ctx.drawImage(img, x * scale, y * scale, imgDisplayW * scale, imgDisplayH * scale);
+      // Draw product at its dragged position and pinch scale
+      const baseW = productImg.naturalWidth * (productImg.offsetWidth / productImg.naturalWidth);
+      const baseH = productImg.naturalHeight * (productImg.offsetHeight / productImg.naturalHeight);
+      const drawW = baseW * imgScale * renderScale;
+      const drawH = baseH * imgScale * renderScale;
+      ctx.drawImage(img, x * renderScale, y * renderScale, drawW, drawH);
 
       const link = document.createElement('a');
       link.download = `product-${index}.png`;
