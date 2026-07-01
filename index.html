@@ -389,14 +389,66 @@
     }
 
     #capture-canvas { display: none; }
+
+    /* ── Start overlay ── */
+    #start-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      cursor: pointer;
+    }
+
+    #start-overlay.hidden { display: none; }
+
+    #start-overlay .start-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #start-overlay .start-icon svg {
+      width: 36px;
+      height: 36px;
+      fill: rgba(255,255,255,0.8);
+    }
+
+    #start-overlay .start-text {
+      font-size: 17px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.7);
+    }
+
+    #start-overlay .start-sub {
+      font-size: 13px;
+      color: rgba(255,255,255,0.3);
+    }
   </style>
 </head>
 <body>
   <div id="flash"></div>
   <canvas id="capture-canvas"></canvas>
 
+  <!-- Start Overlay -->
+  <div id="start-overlay">
+    <div class="start-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 15.2V3m0 12.2l-3.5-3.5M12 15.2l3.5-3.5M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="4" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="2"/></svg>
+    </div>
+    <div class="start-text">Tap to Open Camera</div>
+    <div class="start-sub">Allow camera access when prompted</div>
+  </div>
+
   <!-- Camera Screen -->
-  <div id="camera-screen">
+  <div id="camera-screen" style="display:none;">
     <div id="viewfinder">
       <video id="camera" autoplay playsinline muted></video>
     </div>
@@ -442,12 +494,18 @@
     const backBtn = document.getElementById('back-btn');
     const downloadAllBtn = document.getElementById('download-all-btn');
 
+    const startOverlay = document.getElementById('start-overlay');
+
     let photos = [];
     let stream = null;
+    let cameraReady = false;
+
+    // Safari needs webkit-playsinline
+    video.setAttribute('webkit-playsinline', '');
 
     async function startCamera() {
       const constraints = [
-        { video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+        { video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
         { video: { facingMode: 'environment' }, audio: false },
         { video: { facingMode: 'user' }, audio: false },
         { video: true, audio: false }
@@ -457,13 +515,24 @@
         try {
           stream = await navigator.mediaDevices.getUserMedia(c);
           video.srcObject = stream;
-          await video.play();
+          // Wait for video to actually be ready
+          await new Promise((resolve, reject) => {
+            video.onloadedmetadata = () => {
+              video.play().then(resolve).catch(reject);
+            };
+            setTimeout(() => reject(new Error('Video load timeout')), 5000);
+          });
+          cameraReady = true;
           return;
         } catch (err) {
           console.warn('Constraint failed, trying next:', err.message);
+          if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+          }
         }
       }
-      alert('Camera access is required. Please allow camera permissions and reload.');
+      alert('Could not access camera. Please check permissions in Settings > Safari > Camera and reload.');
     }
 
     function stopCamera() {
@@ -471,13 +540,15 @@
         stream.getTracks().forEach(t => t.stop());
         stream = null;
       }
+      cameraReady = false;
     }
 
     function capturePhoto() {
-      if (photos.length >= 5) return;
+      if (photos.length >= 5 || !cameraReady) return;
 
       const vw = video.videoWidth;
       const vh = video.videoHeight;
+      if (!vw || !vh) return;
       captureCanvas.width = vw;
       captureCanvas.height = vh;
       const ctx = captureCanvas.getContext('2d');
@@ -622,11 +693,16 @@
       await startCamera();
     }
 
+    // Tap to start — required for iOS Safari camera permissions
+    startOverlay.addEventListener('click', async () => {
+      startOverlay.classList.add('hidden');
+      cameraScreen.style.display = 'flex';
+      await startCamera();
+    });
+
     shutterBtn.addEventListener('click', capturePhoto);
     nextBtn.addEventListener('click', processImages);
     backBtn.addEventListener('click', goBack);
-
-    startCamera();
   </script>
 </body>
 </html>
