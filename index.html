@@ -691,14 +691,150 @@
       margin-top: 8px;
     }
 
+    #review-btn {
+      padding: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    #review-btn:active { background: rgba(255,255,255,0.85); }
+
+    /* ── Review Screen ── */
+    #review-screen {
+      display: none;
+      flex-direction: column;
+      min-height: 100dvh;
+      background: #000;
+      z-index: 26;
+    }
+
+    #review-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: max(env(safe-area-inset-top, 12px), 16px) 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0a0a0a;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    #review-back-btn {
+      padding: 8px 18px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    #review-header-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+    }
+
+    #review-content {
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .review-images {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 4px 0;
+    }
+
+    .review-images::-webkit-scrollbar { display: none; }
+
+    .review-images img {
+      height: 120px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .review-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .review-field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .review-field-value {
+      font-size: 15px;
+      color: #fff;
+      line-height: 1.5;
+    }
+
+    .review-field-value.empty {
+      color: rgba(255,255,255,0.15);
+      font-style: italic;
+    }
+
+    .review-divider {
+      height: 1px;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .review-row {
+      display: flex;
+      gap: 20px;
+    }
+
+    .review-row .review-field { flex: 1; }
+
+    #review-footer {
+      padding: 16px;
+      padding-bottom: max(env(safe-area-inset-bottom, 16px), 40px);
+    }
+
+    #publish-btn {
+      width: 100%;
+      padding: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+    }
+
     #publish-btn:active { background: rgba(255,255,255,0.85); }
-    #publish-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #publish-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+    #publish-btn:disabled:active { background: #fff; }
 
     #publish-status {
       text-align: center;
       font-size: 13px;
       color: rgba(255,255,255,0.4);
       min-height: 20px;
+      margin-bottom: 12px;
     }
 
   </style>
@@ -824,9 +960,23 @@
         <span class="form-hint">Comma-separated</span>
       </div>
 
-      <div id="publish-status"></div>
-      <button type="submit" id="publish-btn">Publish to Shopify</button>
+      <button type="submit" id="review-btn">Review Product</button>
     </form>
+  </div>
+
+  <!-- Review Screen -->
+  <div id="review-screen">
+    <div id="review-header">
+      <button id="review-back-btn">Edit</button>
+      <span id="review-header-title">Review</span>
+      <div class="spacer"></div>
+    </div>
+    <div id="review-content"></div>
+    <div id="review-footer">
+      <div id="publish-status"></div>
+      <button id="publish-btn" disabled>Publish to Shopify</button>
+      <span class="form-hint" style="text-align:center;margin-top:8px">Publishing is currently disabled</span>
+    </div>
   </div>
 
   <script>
@@ -854,6 +1004,9 @@
     const publishStatus = document.getElementById('publish-status');
     const formImagesEl = document.getElementById('form-images');
     const collectionSelect = document.getElementById('f-collection');
+    const reviewScreen = document.getElementById('review-screen');
+    const reviewBackBtn = document.getElementById('review-back-btn');
+    const reviewContent = document.getElementById('review-content');
 
     let photos = [];
     let stream = null;
@@ -1391,48 +1544,90 @@
       processingScreen.style.display = 'flex';
     });
 
-    productForm.addEventListener('submit', async (e) => {
+    // Form submit → show review
+    productForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      publishBtn.disabled = true;
-      publishStatus.textContent = 'Publishing to Shopify...';
-      publishStatus.style.color = 'rgba(255,255,255,0.4)';
+      showReview();
+    });
 
-      // Render all images as base64
-      const images = currentResultItems.map(item => {
-        const dataUrl = renderItemToDataUrl(item);
-        return dataUrl.split(',')[1]; // base64 only
+    function showReview() {
+      const title = document.getElementById('f-title').value;
+      const description = document.getElementById('f-description').value;
+      const price = document.getElementById('f-price').value;
+      const weight = document.getElementById('f-weight').value;
+      const categoryEl = document.getElementById('f-category');
+      const category = categoryEl.options[categoryEl.selectedIndex]?.text || '';
+      const collectionEl = document.getElementById('f-collection');
+      const collection = collectionEl.value ? collectionEl.options[collectionEl.selectedIndex]?.text : '';
+      const meta = document.getElementById('f-meta').value;
+      const tags = document.getElementById('f-tags').value;
+
+      // Build review HTML
+      let html = '<div class="review-images">';
+      currentResultItems.forEach(item => {
+        html += `<img src="${renderItemToDataUrl(item)}">`;
       });
+      html += '</div>';
 
-      const payload = {
-        title: document.getElementById('f-title').value,
-        description: document.getElementById('f-description').value,
-        price: document.getElementById('f-price').value,
-        weight: document.getElementById('f-weight').value,
-        category: document.getElementById('f-category').value,
-        collection_id: document.getElementById('f-collection').value,
-        meta_description: document.getElementById('f-meta').value,
-        tags: document.getElementById('f-tags').value,
-        images: images,
-      };
+      html += `
+        <div class="review-field">
+          <span class="review-field-label">Title</span>
+          <span class="review-field-value">${esc(title)}</span>
+        </div>
+        <div class="review-divider"></div>
+        <div class="review-field">
+          <span class="review-field-label">Description</span>
+          <span class="review-field-value ${description ? '' : 'empty'}">${description ? esc(description) : 'No description'}</span>
+        </div>
+        <div class="review-divider"></div>
+        <div class="review-row">
+          <div class="review-field">
+            <span class="review-field-label">Price</span>
+            <span class="review-field-value">${price ? '$' + parseFloat(price).toFixed(2) : '$0.00'}</span>
+          </div>
+          <div class="review-field">
+            <span class="review-field-label">Weight</span>
+            <span class="review-field-value ${weight ? '' : 'empty'}">${weight ? weight + ' lbs' : 'Not set'}</span>
+          </div>
+        </div>
+        <div class="review-divider"></div>
+        <div class="review-row">
+          <div class="review-field">
+            <span class="review-field-label">Category</span>
+            <span class="review-field-value ${category && category !== 'Select category...' ? '' : 'empty'}">${category && category !== 'Select category...' ? esc(category) : 'None'}</span>
+          </div>
+          <div class="review-field">
+            <span class="review-field-label">Collection</span>
+            <span class="review-field-value ${collection ? '' : 'empty'}">${collection ? esc(collection) : 'None'}</span>
+          </div>
+        </div>
+        <div class="review-divider"></div>
+        <div class="review-field">
+          <span class="review-field-label">Meta Description</span>
+          <span class="review-field-value ${meta ? '' : 'empty'}">${meta ? esc(meta) : 'Not set'}</span>
+        </div>
+        <div class="review-divider"></div>
+        <div class="review-field">
+          <span class="review-field-label">SEO Tags</span>
+          <span class="review-field-value ${tags ? '' : 'empty'}">${tags ? esc(tags) : 'None'}</span>
+        </div>
+      `;
 
-      try {
-        const resp = await fetch('/api/shopify-create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+      reviewContent.innerHTML = html;
+      productScreen.style.display = 'none';
+      reviewScreen.style.display = 'flex';
+      window.scrollTo(0, 0);
+    }
 
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to create product');
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
 
-        publishStatus.style.color = '#4ade80';
-        publishStatus.textContent = 'Published! Product ID: ' + data.product_id;
-        publishBtn.textContent = 'Published';
-      } catch (err) {
-        publishStatus.style.color = '#ff6b6b';
-        publishStatus.textContent = 'Error: ' + err.message;
-        publishBtn.disabled = false;
-      }
+    reviewBackBtn.addEventListener('click', () => {
+      reviewScreen.style.display = 'none';
+      productScreen.style.display = 'flex';
     });
 
     // ── Navigation ──
