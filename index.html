@@ -444,9 +444,35 @@
     let photos = [];
     let stream = null;
     let cameraReady = false;
+    let segmenter = null;
 
     video.setAttribute('webkit-playsinline', '');
 
+    // ── Load MediaPipe segmenter (lazy, on first use) ──
+    async function getSegmenter() {
+      if (segmenter) return segmenter;
+
+      const { ImageSegmenter, FilesetResolver } = await import(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/+esm'
+      );
+
+      const vision = await FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm'
+      );
+
+      segmenter = await ImageSegmenter.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite',
+        },
+        outputCategoryMask: false,
+        outputConfidenceMasks: true,
+        runningMode: 'IMAGE',
+      });
+
+      return segmenter;
+    }
+
+    // ── Camera ──
     async function startCamera() {
       const constraints = [
         { video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
@@ -459,7 +485,6 @@
         try {
           stream = await navigator.mediaDevices.getUserMedia(c);
           video.srcObject = stream;
-          // Wait for video to actually be ready
           await new Promise((resolve, reject) => {
             video.onloadedmetadata = () => {
               video.play().then(resolve).catch(reject);
@@ -539,6 +564,7 @@
       });
     }
 
+    // ── Process images with MediaPipe ──
     async function processImages() {
       cameraScreen.style.display = 'none';
       processingScreen.style.display = 'flex';
@@ -546,7 +572,18 @@
       downloadAllBtn.style.display = 'none';
       stopCamera();
 
-      const resultBlobs = [];
+      // Load model on first use
+      statusEl.textContent = 'Loading AI model...';
+      let seg;
+      try {
+        seg = await getSegmenter();
+      } catch (err) {
+        console.error('Failed to load segmenter:', err);
+        statusEl.textContent = 'Failed to load AI model';
+        return;
+      }
+
+      const resultCanvases = [];
 
       for (let i = 0; i < photos.length; i++) {
         statusEl.textContent = `${i + 1} of ${photos.length}`;
@@ -555,58 +592,70 @@
         spinnerEl.className = 'spinner';
         spinnerEl.innerHTML = `
           <div class="spinner-ring"></div>
-          <div class="progress-text">Removing background ${i + 1}/${photos.length}...</div>
+          <div class="progress-text">Processing ${i + 1}/${photos.length}...</div>
         `;
         resultsGrid.appendChild(spinnerEl);
 
         try {
-          // Convert blob to base64 data URL
-          const dataUrl = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(photos[i]);
-          });
-
-          const prog = spinnerEl.querySelector('.progress-text');
-          if (prog) prog.textContent = `Processing ${i + 1}/${photos.length}...`;
-
-          // Send to server for BG removal
-          const resp = await fetch('/api/remove-bg', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: dataUrl }),
-          });
-
-          if (!resp.ok) {
-            const errData = await resp.json().catch(() => ({}));
-            throw new Error(errData.details || resp.statusText);
-          }
-
-          const { image: resultDataUrl } = await resp.json();
-
-          // Draw result onto canvas with black background
+          // Load blob into an Image element
+          const imgUrl = URL.createObjectURL(photos[i]);
           const img = new Image();
           await new Promise((resolve, reject) => {
             img.onload = resolve;
             img.onerror = reject;
-            img.src = resultDataUrl;
+            img.src = imgUrl;
           });
 
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#000000';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
+          // Run segmentation
+          const result = seg.segment(img);
+          const mask = result.confidenceMasks[0];
+          const maskData = mask.getAsFloat32Array();
+          const w = img.naturalWidth;
+          const h = img.naturalHeight;
 
+          // Draw original image to a temp canvas to read pixels
+          const srcCanvas = document.createElement('canvas');
+          srcCanvas.width = w;
+          srcCanvas.height = h;
+          const srcCtx = srcCanvas.getContext('2d');
+          srcCtx.drawImage(img, 0, 0);
+          const srcPixels = srcCtx.getImageData(0, 0, w, h);
+
+          // Create output: black background + masked foreground
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = w;
+          outCanvas.height = h;
+          const outCtx = outCanvas.getContext('2d');
+          const outData = outCtx.createImageData(w, h);
+
+          for (let p = 0; p < maskData.length; p++) {
+            const confidence = maskData[p]; // 0 = background, 1 = person
+            const idx = p * 4;
+            if (confidence > 0.5) {
+              outData.data[idx]     = srcPixels.data[idx];
+              outData.data[idx + 1] = srcPixels.data[idx + 1];
+              outData.data[idx + 2] = srcPixels.data[idx + 2];
+              outData.data[idx + 3] = 255;
+            } else {
+              outData.data[idx]     = 0;
+              outData.data[idx + 1] = 0;
+              outData.data[idx + 2] = 0;
+              outData.data[idx + 3] = 255;
+            }
+          }
+
+          outCtx.putImageData(outData, 0, 0);
+          URL.revokeObjectURL(imgUrl);
+          mask.close();
+
+          // Build result card
           const card = document.createElement('div');
           card.className = 'result-card';
 
-          const resultCanvas = document.createElement('canvas');
-          resultCanvas.width = canvas.width;
-          resultCanvas.height = canvas.height;
-          resultCanvas.getContext('2d').drawImage(canvas, 0, 0);
+          const displayCanvas = document.createElement('canvas');
+          displayCanvas.width = w;
+          displayCanvas.height = h;
+          displayCanvas.getContext('2d').drawImage(outCanvas, 0, 0);
 
           const actions = document.createElement('div');
           actions.className = 'result-actions';
@@ -617,15 +666,15 @@
 
           const dlBtn = document.createElement('button');
           dlBtn.textContent = 'Save';
-          dlBtn.onclick = () => downloadCanvas(resultCanvas, `photo-${i + 1}.png`);
+          dlBtn.onclick = () => downloadCanvas(displayCanvas, `photo-${i + 1}.png`);
 
           actions.appendChild(label);
           actions.appendChild(dlBtn);
-          card.appendChild(resultCanvas);
+          card.appendChild(displayCanvas);
           card.appendChild(actions);
           spinnerEl.replaceWith(card);
 
-          resultBlobs.push({ canvas: resultCanvas, index: i + 1 });
+          resultCanvases.push({ canvas: displayCanvas, index: i + 1 });
 
         } catch (err) {
           console.error('BG removal failed:', err);
@@ -634,10 +683,10 @@
       }
 
       statusEl.textContent = 'Done';
-      if (resultBlobs.length > 0) {
+      if (resultCanvases.length > 0) {
         downloadAllBtn.style.display = 'block';
         downloadAllBtn.onclick = () => {
-          resultBlobs.forEach(r => downloadCanvas(r.canvas, `photo-${r.index}.png`));
+          resultCanvases.forEach(r => downloadCanvas(r.canvas, `photo-${r.index}.png`));
         };
       }
     }

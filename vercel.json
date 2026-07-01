@@ -1,8 +1,0 @@
-{
-  "functions": {
-    "api/remove-bg.js": {
-      "memory": 3009,
-      "maxDuration": 60
-    }
-  }
-}
