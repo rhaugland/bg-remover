@@ -609,6 +609,8 @@
           // Run segmentation
           const result = seg.segment(img);
           const mask = result.confidenceMasks[0];
+          const maskW = mask.width;
+          const maskH = mask.height;
           const maskData = mask.getAsFloat32Array();
           const w = img.naturalWidth;
           const h = img.naturalHeight;
@@ -622,25 +624,32 @@
           const srcPixels = srcCtx.getImageData(0, 0, w, h);
 
           // Create output: black background + masked foreground
+          // Scale mask coordinates to image coordinates
           const outCanvas = document.createElement('canvas');
           outCanvas.width = w;
           outCanvas.height = h;
           const outCtx = outCanvas.getContext('2d');
           const outData = outCtx.createImageData(w, h);
 
-          for (let p = 0; p < maskData.length; p++) {
-            const confidence = maskData[p]; // 0 = background, 1 = person
-            const idx = p * 4;
-            if (confidence > 0.5) {
-              outData.data[idx]     = srcPixels.data[idx];
-              outData.data[idx + 1] = srcPixels.data[idx + 1];
-              outData.data[idx + 2] = srcPixels.data[idx + 2];
-              outData.data[idx + 3] = 255;
-            } else {
-              outData.data[idx]     = 0;
-              outData.data[idx + 1] = 0;
-              outData.data[idx + 2] = 0;
-              outData.data[idx + 3] = 255;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const imgIdx = (y * w + x) * 4;
+              // Map image pixel to mask pixel
+              const mx = Math.min(Math.floor(x * maskW / w), maskW - 1);
+              const my = Math.min(Math.floor(y * maskH / h), maskH - 1);
+              const confidence = maskData[my * maskW + mx];
+
+              if (confidence > 0.5) {
+                outData.data[imgIdx]     = srcPixels.data[imgIdx];
+                outData.data[imgIdx + 1] = srcPixels.data[imgIdx + 1];
+                outData.data[imgIdx + 2] = srcPixels.data[imgIdx + 2];
+                outData.data[imgIdx + 3] = 255;
+              } else {
+                outData.data[imgIdx]     = 0;
+                outData.data[imgIdx + 1] = 0;
+                outData.data[imgIdx + 2] = 0;
+                outData.data[imgIdx + 3] = 255;
+              }
             }
           }
 
