@@ -58,32 +58,52 @@ class handler(BaseHTTPRequestHandler):
                 mime = "image/png"
                 ext = "image.png"
 
-            # Use Stability AI search-and-replace to remove watermarks
-            fields = {
-                "prompt": "clean smooth product surface with original color and texture, no text or logos visible anywhere on the product or background",
-                "search_prompt": "semi-transparent watermark text and logo on the product surface, faded brand name overlay, ghosted eagle logo stamp on the product",
-                "output_format": "png",
-            }
-            files = {
-                "image": (ext, image_bytes, mime),
-            }
+            # Run watermark removal twice for thorough cleaning
+            current_bytes = image_bytes
+            current_mime = mime
+            current_ext = ext
 
-            req_body, content_type = build_multipart(fields, files)
-
-            req = urllib.request.Request(
-                "https://api.stability.ai/v2beta/stable-image/edit/search-and-replace",
-                data=req_body,
-                headers={
-                    "Authorization": f"Bearer {STABILITY_API_KEY}",
-                    "Content-Type": content_type,
-                    "Accept": "image/*",
+            passes = [
+                {
+                    "search_prompt": "dark eagle wing logo watermark stamped on the white product, semi-transparent brand overlay on the product surface",
+                    "prompt": "clean white automotive body panel surface, smooth paint finish, no logos or markings",
                 },
-                method="POST",
-            )
+                {
+                    "search_prompt": "any remaining faded text, watermark, logo, or brand stamp anywhere in the image",
+                    "prompt": "clean product photo with smooth surfaces, no watermarks or text overlays visible",
+                },
+            ]
 
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                result_bytes = resp.read()
-                result_ct = resp.headers.get("Content-Type", "image/png")
+            for p in passes:
+                fields = {
+                    "prompt": p["prompt"],
+                    "search_prompt": p["search_prompt"],
+                    "output_format": "png",
+                }
+                files = {
+                    "image": (current_ext, current_bytes, current_mime),
+                }
+
+                req_body, content_type = build_multipart(fields, files)
+
+                req = urllib.request.Request(
+                    "https://api.stability.ai/v2beta/stable-image/edit/search-and-replace",
+                    data=req_body,
+                    headers={
+                        "Authorization": f"Bearer {STABILITY_API_KEY}",
+                        "Content-Type": content_type,
+                        "Accept": "image/*",
+                    },
+                    method="POST",
+                )
+
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    current_bytes = resp.read()
+                    current_mime = "image/png"
+                    current_ext = "image.png"
+
+            result_bytes = current_bytes
+            result_ct = "image/png"
 
             result_b64 = base64.b64encode(result_bytes).decode()
             result_data_url = f"data:{result_ct};base64,{result_b64}"

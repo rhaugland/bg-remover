@@ -16,7 +16,7 @@
       "maxDuration": 15
     },
     "api/remove-watermark.py": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   }
 }
