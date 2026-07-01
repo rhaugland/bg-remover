@@ -2010,12 +2010,35 @@
         const resp = await fetch('/api/shopify-collections');
         if (!resp.ok) throw new Error('Failed to fetch');
         const data = await resp.json();
+
+        // Filter to vehicle-related collections and group by prefix
+        const vehiclePrefixes = ['Truck Parts', 'Van Parts', 'Waldoch', 'ATV/UTV'];
+        const vehicleCollections = data.collections.filter(c =>
+          vehiclePrefixes.some(p => c.title.startsWith(p))
+        );
+
+        // Group by prefix
+        const groups = {};
+        vehicleCollections.forEach(c => {
+          const prefix = vehiclePrefixes.find(p => c.title.startsWith(p)) || 'Other';
+          if (!groups[prefix]) groups[prefix] = [];
+          groups[prefix].push(c);
+        });
+
         collectionSelect.innerHTML = '<option value="">No collection</option>';
-        data.collections.forEach(c => {
-          const opt = document.createElement('option');
-          opt.value = c.id;
-          opt.textContent = c.title;
-          collectionSelect.appendChild(opt);
+
+        Object.keys(groups).sort().forEach(prefix => {
+          const optgroup = document.createElement('optgroup');
+          optgroup.label = prefix;
+          groups[prefix].forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            // Show subcategory name if it has one, otherwise full title
+            const sub = c.title.replace(prefix + ' - ', '').replace(prefix + ' ', '');
+            opt.textContent = sub === c.title ? c.title : sub;
+            optgroup.appendChild(opt);
+          });
+          collectionSelect.appendChild(optgroup);
         });
       } catch (err) {
         collectionSelect.innerHTML = '<option value="">Could not load collections</option>';
