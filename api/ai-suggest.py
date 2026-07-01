@@ -106,14 +106,33 @@ Return ONLY valid JSON, nothing else."""
 
             text = result["content"][0]["text"].strip()
 
+            # Strip markdown code fences if present
+            if text.startswith("```"):
+                lines = text.split("\n")
+                # Remove first line (```json) and last line (```)
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                text = "\n".join(lines).strip()
+
             # Parse response based on field type
             if field == "description":
-                response = json.dumps({"description": text})
-            elif field == "seo":
-                parsed = json.loads(text)
-                response = json.dumps(parsed)
+                # Try to parse as JSON in case model wrapped it
+                try:
+                    parsed = json.loads(text)
+                    desc = parsed.get("description", text)
+                except (json.JSONDecodeError, AttributeError):
+                    desc = text
+                response = json.dumps({"description": desc})
             else:
-                parsed = json.loads(text)
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    # Extract JSON from surrounding text
+                    start = text.find("{")
+                    end = text.rfind("}") + 1
+                    if start >= 0 and end > start:
+                        parsed = json.loads(text[start:end])
+                    else:
+                        parsed = {"meta_description": "", "tags": ""}
                 response = json.dumps(parsed)
 
             self.send_response(200)
