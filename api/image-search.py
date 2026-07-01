@@ -4,17 +4,16 @@ import os
 import urllib.request
 import urllib.error
 import urllib.parse
-import base64
+import re
 
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
-GOOGLE_CSE_ID = os.environ.get("GOOGLE_CSE_ID", "")
+BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
 
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
-            if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
-                raise ValueError("Google Search API not configured")
+            if not BRAVE_API_KEY:
+                raise ValueError("BRAVE_API_KEY not configured")
 
             content_length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(content_length))
@@ -23,34 +22,42 @@ class handler(BaseHTTPRequestHandler):
             if not query:
                 raise ValueError("Part number is required")
 
-            # Search Google Images for the part number
+            # Search Brave Images for the part number
             params = urllib.parse.urlencode({
-                "key": GOOGLE_API_KEY,
-                "cx": GOOGLE_CSE_ID,
                 "q": query,
-                "searchType": "image",
-                "num": 10,
-                "imgSize": "large",
+                "count": 10,
+                "search_lang": "en",
+                "safesearch": "moderate",
             })
 
             req = urllib.request.Request(
-                f"https://www.googleapis.com/customsearch/v1?{params}",
-                headers={"Accept": "application/json"},
+                f"https://api.search.brave.com/res/v1/images/search?{params}",
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Encoding": "gzip",
+                    "X-Subscription-Token": BRAVE_API_KEY,
+                },
             )
 
             with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read())
+                raw = resp.read()
+                # Handle gzip
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    import gzip
+                    raw = gzip.decompress(raw)
+                data = json.loads(raw)
 
             # Extract image results
             images = []
-            for item in data.get("items", []):
+            for item in data.get("results", []):
+                thumb = item.get("thumbnail", {})
                 images.append({
-                    "url": item.get("link", ""),
-                    "thumbnail": item.get("image", {}).get("thumbnailLink", ""),
+                    "url": item.get("properties", {}).get("url", item.get("url", "")),
+                    "thumbnail": thumb.get("src", ""),
                     "title": item.get("title", ""),
-                    "source": item.get("displayLink", ""),
-                    "width": item.get("image", {}).get("width", 0),
-                    "height": item.get("image", {}).get("height", 0),
+                    "source": item.get("source", ""),
+                    "width": item.get("properties", {}).get("width", 0),
+                    "height": item.get("properties", {}).get("height", 0),
                 })
 
             response = json.dumps({"images": images, "query": query})
