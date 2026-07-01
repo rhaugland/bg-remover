@@ -23,11 +23,90 @@
       position: static;
     }
 
+    /* ── Home Screen ── */
+    #home-screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 40px 24px;
+      background: #000;
+      z-index: 5;
+    }
+
+    .home-title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .home-subtitle {
+      font-size: 14px;
+      color: rgba(255,255,255,0.35);
+      margin-top: -20px;
+      margin-bottom: 16px;
+    }
+
+    .home-btn {
+      width: 100%;
+      max-width: 320px;
+      padding: 20px 24px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      background: #111;
+      color: #fff;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .home-btn:active {
+      background: #1a1a1a;
+      border-color: rgba(255,255,255,0.25);
+    }
+
+    .home-btn-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    .home-btn-text {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .home-btn-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .home-btn-desc {
+      font-size: 12px;
+      color: rgba(255,255,255,0.35);
+      line-height: 1.3;
+    }
+
     /* ── Camera Screen ── */
     #camera-screen {
       position: absolute;
       inset: 0;
-      display: flex;
+      display: none;
       flex-direction: column;
     }
 
@@ -1035,29 +1114,6 @@
       margin-bottom: 12px;
     }
 
-    /* ── Part Lookup Button ── */
-    #part-lookup-btn {
-      position: absolute;
-      left: 24px;
-      padding: 10px 16px;
-      background: rgba(255,255,255,0.15);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 12px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      -webkit-appearance: none;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      letter-spacing: 0.2px;
-    }
-
-    #part-lookup-btn:active { background: rgba(255,255,255,0.25); }
-
     /* ── Part Lookup Screen ── */
     #lookup-screen {
       display: none;
@@ -1238,6 +1294,26 @@
   <div id="flash"></div>
   <canvas id="capture-canvas"></canvas>
 
+  <!-- Home Screen -->
+  <div id="home-screen">
+    <div class="home-title">BG Remover</div>
+    <div class="home-subtitle">Product photo studio</div>
+    <button class="home-btn" onclick="goToCamera()">
+      <div class="home-btn-icon">&#128247;</div>
+      <div class="home-btn-text">
+        <span class="home-btn-title">Take Photos</span>
+        <span class="home-btn-desc">Use your camera to capture up to 5 product images</span>
+      </div>
+    </button>
+    <button class="home-btn" onclick="goToLookup()">
+      <div class="home-btn-icon">&#128270;</div>
+      <div class="home-btn-text">
+        <span class="home-btn-title">Search Part Number</span>
+        <span class="home-btn-desc">Find product images from vendor websites</span>
+      </div>
+    </button>
+  </div>
+
   <!-- Camera Screen -->
   <div id="camera-screen">
     <div id="viewfinder">
@@ -1246,7 +1322,6 @@
 
     <div id="top-bar">
       <span id="app-title">BG Remover</span>
-      <button id="part-lookup-btn" onclick="showLookup()">Part #</button>
       <span id="photo-count">0 / 5</span>
     </div>
 
@@ -2471,6 +2546,35 @@
       productScreen.style.display = 'flex';
     });
 
+    // ── Home Screen ──
+    const homeScreen = document.getElementById('home-screen');
+
+    function goToCamera() {
+      homeScreen.style.display = 'none';
+      cameraScreen.style.display = 'flex';
+      startCamera();
+    }
+
+    function goToLookup() {
+      homeScreen.style.display = 'none';
+      lookupScreen.style.display = 'flex';
+      document.body.classList.add('scrollable');
+      setTimeout(() => lookupInput.focus(), 100);
+    }
+
+    function goHome() {
+      cameraScreen.style.display = 'none';
+      lookupScreen.style.display = 'none';
+      processingScreen.style.display = 'none';
+      productScreen.style.display = 'none';
+      reviewScreen.style.display = 'none';
+      document.body.classList.remove('scrollable');
+      homeScreen.style.display = 'flex';
+      stopCamera();
+      photos = [];
+      updateUI();
+    }
+
     // ── Part Lookup ──
     const lookupScreen = document.getElementById('lookup-screen');
     const lookupInput = document.getElementById('lookup-input');
@@ -2481,19 +2585,10 @@
     let lookupSelected = new Set();
     let lookupResults = [];
 
-    function showLookup() {
-      cameraScreen.style.display = 'none';
-      lookupScreen.style.display = 'flex';
-      document.body.classList.add('scrollable');
-      stopCamera();
-      lookupInput.focus();
-    }
-
-    document.getElementById('lookup-back-btn').addEventListener('click', async () => {
+    document.getElementById('lookup-back-btn').addEventListener('click', () => {
       lookupScreen.style.display = 'none';
       document.body.classList.remove('scrollable');
-      cameraScreen.style.display = 'flex';
-      await startCamera();
+      homeScreen.style.display = 'flex';
     });
 
     lookupInput.addEventListener('keydown', (e) => {
@@ -2610,20 +2705,13 @@
     });
 
     // ── Navigation ──
-    async function goBack() {
-      processingScreen.style.display = 'none';
-      document.body.classList.remove('scrollable');
-      cameraScreen.style.display = 'flex';
-      photos = [];
-      updateUI();
-      await startCamera();
+    function goBack() {
+      goHome();
     }
 
     shutterBtn.addEventListener('click', capturePhoto);
     nextBtn.addEventListener('click', processImages);
     backBtn.addEventListener('click', goBack);
-
-    startCamera();
   </script>
 </body>
 </html>
