@@ -1809,13 +1809,17 @@
               });
               if (detectResp.ok) {
                 const detection = await detectResp.json();
-                console.log('Watermark detection:', JSON.stringify(detection));
+                console.log('Watermark detection result:', JSON.stringify(detection));
                 if (detection.found) {
                   if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
-                  // Run removal twice for thorough cleaning
                   imageToProcess = await canvasInpaint(dataUrl, detection);
                   imageToProcess = await canvasInpaint(imageToProcess, detection);
+                  imageToProcess = await canvasInpaint(imageToProcess, detection);
+                } else {
+                  console.log('No watermark detected by Claude');
                 }
+              } else {
+                console.error('Detection API error:', detectResp.status, await detectResp.text());
               }
             } catch (wmErr) {
               console.error('Watermark detection failed:', wmErr);
@@ -2196,6 +2200,7 @@
 
           // Support single region (old format) or multiple regions
           const regions = detection.regions || [{ x: detection.x, y: detection.y, w: detection.w, h: detection.h }];
+          console.log(`canvasInpaint: ${regions.length} regions on ${w}x${h} image`);
 
           const imageData = ctx.getImageData(0, 0, w, h);
           const data = imageData.data;
