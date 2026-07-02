@@ -495,6 +495,47 @@
 
     .drag-stage.dragged .drag-hint { opacity: 0; }
 
+    /* ── Erase tool ── */
+    .erase-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 5;
+      cursor: crosshair;
+      display: none;
+    }
+    .drag-stage.erase-mode .erase-canvas { display: block; }
+    .drag-stage.erase-mode .drag-hint { display: none; }
+    .drag-stage.erase-mode { cursor: crosshair; }
+    .erase-btn {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      z-index: 10;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .erase-btn.active {
+      background: rgba(255,60,60,0.7);
+      border-color: rgba(255,60,60,0.9);
+    }
+    .erase-size-row {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: #aaa;
+    }
+    .erase-size-row.visible { display: flex; }
+    .erase-size-row input[type="range"] { flex: 1; }
+
     /* ── Background color picker ── */
     .bg-picker {
       display: flex;
@@ -1798,34 +1839,6 @@
           const prog = spinnerEl.querySelector('.progress-text');
           let imageToProcess = dataUrl;
 
-          // Remove watermarks for images from part lookup
-          if (photosFromLookup) {
-            if (prog) prog.textContent = `Detecting watermark ${i + 1}/${photos.length}...`;
-            try {
-              const detectResp = await fetch('/api/detect-watermark', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: dataUrl }),
-              });
-              if (detectResp.ok) {
-                const detection = await detectResp.json();
-                console.log('Watermark detection result:', JSON.stringify(detection));
-                if (detection.found) {
-                  if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
-                  imageToProcess = await canvasInpaint(dataUrl, detection);
-                  imageToProcess = await canvasInpaint(imageToProcess, detection);
-                  imageToProcess = await canvasInpaint(imageToProcess, detection);
-                } else {
-                  console.log('No watermark detected by Claude');
-                }
-              } else {
-                console.error('Detection API error:', detectResp.status, await detectResp.text());
-              }
-            } catch (wmErr) {
-              console.error('Watermark detection failed:', wmErr);
-            }
-          }
-
           if (prog) prog.textContent = `Removing background ${i + 1}/${photos.length}...`;
 
           const resp = await fetch('/api/remove-bg', {
@@ -1873,13 +1886,53 @@
           hint.className = 'drag-hint';
           hint.textContent = 'Drag to move \u00b7 Pinch to resize';
 
+          // Erase canvas overlay
+          const eraseCanvas = document.createElement('canvas');
+          eraseCanvas.className = 'erase-canvas';
+
+          const eraseBtn = document.createElement('button');
+          eraseBtn.className = 'erase-btn';
+          eraseBtn.textContent = 'Erase';
+
           stage.appendChild(productImg);
           stage.appendChild(watermarkImg);
+          stage.appendChild(eraseCanvas);
+          stage.appendChild(eraseBtn);
           stage.appendChild(modeToggle);
           stage.appendChild(hint);
 
           // Center product initially after stage is in DOM
-          const item = { stage, productImg, watermarkImg, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000', sharpness: 0, originalDataUrl: resultDataUrl, originalImg: img, wmX: 0, wmY: 0, wmScale: 1, dragMode: 'product' };
+          const item = { stage, productImg, watermarkImg, eraseCanvas, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000', sharpness: 0, originalDataUrl: resultDataUrl, originalImg: img, wmX: 0, wmY: 0, wmScale: 1, dragMode: 'product', eraseMode: false, eraseBrushSize: 25 };
+
+          // Erase mode toggle
+          eraseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            item.eraseMode = !item.eraseMode;
+            if (item.eraseMode) {
+              eraseBtn.textContent = 'Done Erasing';
+              eraseBtn.classList.add('active');
+              stage.classList.add('erase-mode');
+              modeToggle.style.display = 'none';
+              // Size the erase canvas to match the stage
+              eraseCanvas.width = stage.offsetWidth * 2;
+              eraseCanvas.height = stage.offsetHeight * 2;
+              eraseCanvas.style.width = stage.offsetWidth + 'px';
+              eraseCanvas.style.height = stage.offsetHeight + 'px';
+              item.eraseSizeRow.classList.add('visible');
+            } else {
+              eraseBtn.textContent = 'Erase';
+              eraseBtn.classList.remove('active');
+              stage.classList.remove('erase-mode');
+              modeToggle.style.display = '';
+              item.eraseSizeRow.classList.remove('visible');
+              // Apply erase: composite the erased areas onto the product image
+              applyErase(item);
+            }
+          });
+
+          // Erase drawing handlers
+          setupEraseTool(item, eraseCanvas);
+
           modeToggle.addEventListener('click', (e) => {
             e.stopPropagation();
             if (item.dragMode === 'product') {
@@ -1913,9 +1966,20 @@
           actions.appendChild(label);
           actions.appendChild(dlBtn);
           const sharpenRow = buildSharpenSlider(item);
+          // Erase brush size slider
+          const eraseSizeRow = document.createElement('div');
+          eraseSizeRow.className = 'erase-size-row';
+          eraseSizeRow.innerHTML = `<span>Brush</span><input type="range" min="5" max="60" value="25"><span class="erase-size-val">25</span>`;
+          eraseSizeRow.querySelector('input').addEventListener('input', (e) => {
+            item.eraseBrushSize = parseInt(e.target.value);
+            eraseSizeRow.querySelector('.erase-size-val').textContent = e.target.value;
+          });
+          item.eraseSizeRow = eraseSizeRow;
+
           card.appendChild(stage);
           card.appendChild(picker);
           card.appendChild(sharpenRow);
+          card.appendChild(eraseSizeRow);
           card.appendChild(actions);
           spinnerEl.replaceWith(card);
 
@@ -2071,6 +2135,8 @@
       // Touch events
       stage.addEventListener('touchstart', (e) => {
         if (e.target.classList.contains('drag-mode-toggle')) return;
+        if (e.target.classList.contains('erase-btn')) return;
+        if (item.eraseMode) return;
         e.preventDefault();
         stage.classList.add('dragged');
         const pos = getPos();
@@ -2185,89 +2251,150 @@
       }, { passive: false });
     }
 
-    // ── Canvas-based watermark removal via alpha blend reversal ──
-    function canvasInpaint(dataUrl, detection) {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          const c = document.createElement('canvas');
-          const w = img.naturalWidth;
-          const h = img.naturalHeight;
-          c.width = w;
-          c.height = h;
-          const ctx = c.getContext('2d');
-          ctx.drawImage(img, 0, 0);
+    // ── Erase tool for watermark removal ──
+    function setupEraseTool(item, canvas) {
+      const ctx = canvas.getContext('2d');
+      let drawing = false;
 
-          // Support single region (old format) or multiple regions
-          const regions = detection.regions || [{ x: detection.x, y: detection.y, w: detection.w, h: detection.h }];
-          console.log(`canvasInpaint: ${regions.length} regions on ${w}x${h} image`);
+      function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const touch = e.touches ? e.touches[0] : e;
+        return {
+          x: (touch.clientX - rect.left) * scaleX,
+          y: (touch.clientY - rect.top) * scaleY,
+        };
+      }
 
-          const imageData = ctx.getImageData(0, 0, w, h);
-          const data = imageData.data;
+      function draw(e) {
+        if (!drawing || !item.eraseMode) return;
+        const pos = getPos(e);
+        const r = item.eraseBrushSize * 2; // 2x for retina canvas
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,0,0,0.4)';
+        ctx.fill();
+      }
 
-          for (const region of regions) {
-            const rx = Math.max(0, Math.floor(((region.x) / 100) * w));
-            const ry = Math.max(0, Math.floor(((region.y) / 100) * h));
-            const rw = Math.min(w - rx, Math.ceil((region.w / 100) * w));
-            const rh = Math.min(h - ry, Math.ceil((region.h / 100) * h));
+      canvas.addEventListener('touchstart', (e) => {
+        if (!item.eraseMode) return;
+        e.preventDefault();
+        e.stopPropagation();
+        drawing = true;
+        draw(e);
+      }, { passive: false });
 
-            // Sample clean pixels from OUTSIDE the watermark region (wider border)
-            let borderSum = [0, 0, 0];
-            let borderCount = 0;
-            const sampleDist = 20;
-            for (let y = Math.max(0, ry - sampleDist); y < Math.min(h, ry + rh + sampleDist); y++) {
-              for (let x = Math.max(0, rx - sampleDist); x < Math.min(w, rx + rw + sampleDist); x++) {
-                if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) continue;
-                const idx = (y * w + x) * 4;
-                borderSum[0] += data[idx];
-                borderSum[1] += data[idx + 1];
-                borderSum[2] += data[idx + 2];
-                borderCount++;
-              }
-            }
-            if (borderCount === 0) continue;
-            const borderAvg = borderSum.map(s => s / borderCount);
+      canvas.addEventListener('touchmove', (e) => {
+        if (!item.eraseMode) return;
+        e.preventDefault();
+        e.stopPropagation();
+        draw(e);
+      }, { passive: false });
 
-            // Reverse the alpha blend of the semi-transparent watermark
-            // displayed = original * (1-α) + wmColor * α
-            // The watermark is very dark (near black)
-            const wmColor = 20;
+      canvas.addEventListener('touchend', (e) => {
+        drawing = false;
+      });
 
-            for (let y = ry; y < ry + rh && y < h; y++) {
-              for (let x = rx; x < rx + rw && x < w; x++) {
-                const idx = (y * w + x) * 4;
+      canvas.addEventListener('mousedown', (e) => {
+        if (!item.eraseMode) return;
+        e.preventDefault();
+        e.stopPropagation();
+        drawing = true;
+        draw(e);
+      });
 
-                // Feather at edges
-                const edgeDist = Math.min(x - rx, rx + rw - 1 - x, y - ry, ry + rh - 1 - y);
-                const feather = Math.min(1, edgeDist / 10);
+      canvas.addEventListener('mousemove', (e) => {
+        if (!item.eraseMode) return;
+        draw(e);
+      });
 
-                for (let ch = 0; ch < 3; ch++) {
-                  const pixel = data[idx + ch];
-                  const border = borderAvg[ch];
+      canvas.addEventListener('mouseup', () => { drawing = false; });
+    }
 
-                  const denom = border - wmColor;
-                  if (denom <= 5) continue;
+    function applyErase(item) {
+      const { productImg, eraseCanvas, stage } = item;
+      const eCtx = eraseCanvas.getContext('2d');
+      const ew = eraseCanvas.width;
+      const eh = eraseCanvas.height;
 
-                  let alpha = (border - pixel) / denom;
-                  alpha = Math.max(0, Math.min(0.85, alpha));
+      // Get the erase mask (red painted areas)
+      const eraseData = eCtx.getImageData(0, 0, ew, eh);
 
-                  let original = pixel;
-                  if (alpha > 0.01) {
-                    original = (pixel - wmColor * alpha) / (1 - alpha);
-                    original = Math.max(0, Math.min(255, original));
-                  }
+      // Draw the product image at its current position onto a work canvas
+      const workCanvas = document.createElement('canvas');
+      const sw = stage.offsetWidth * 2;
+      const sh = stage.offsetHeight * 2;
+      workCanvas.width = sw;
+      workCanvas.height = sh;
+      const wCtx = workCanvas.getContext('2d');
 
-                  data[idx + ch] = Math.round(pixel + (original - pixel) * feather);
+      // Draw product at current position
+      const baseW = productImg.offsetWidth;
+      const baseH = productImg.offsetHeight;
+      wCtx.drawImage(productImg, item.x * 2, item.y * 2, baseW * item.imgScale * 2, baseH * item.imgScale * 2);
+
+      const imgData = wCtx.getImageData(0, 0, sw, sh);
+      const pixels = imgData.data;
+
+      // For each erased pixel, replace with average of nearby non-erased pixels
+      for (let y = 0; y < sh; y++) {
+        for (let x = 0; x < sw; x++) {
+          const eIdx = (y * ew + x) * 4;
+          // Check if this pixel was painted (red channel > 0 in erase canvas)
+          if (x < ew && y < eh && eraseData.data[eIdx + 3] > 10) {
+            // Sample from surrounding non-erased pixels
+            let sr = 0, sg = 0, sb = 0, count = 0;
+            const sampleR = 30;
+            for (let sy = y - sampleR; sy <= y + sampleR; sy += 5) {
+              for (let sx = x - sampleR; sx <= x + sampleR; sx += 5) {
+                if (sx < 0 || sy < 0 || sx >= sw || sy >= sh) continue;
+                const seIdx = (sy * ew + sx) * 4;
+                // Only sample non-erased pixels
+                if (sx < ew && sy < eh && eraseData.data[seIdx + 3] > 10) continue;
+                const sIdx = (sy * sw + sx) * 4;
+                if (pixels[sIdx + 3] > 0) { // has content
+                  sr += pixels[sIdx];
+                  sg += pixels[sIdx + 1];
+                  sb += pixels[sIdx + 2];
+                  count++;
                 }
               }
             }
+            if (count > 0) {
+              const pIdx = (y * sw + x) * 4;
+              pixels[pIdx] = Math.round(sr / count);
+              pixels[pIdx + 1] = Math.round(sg / count);
+              pixels[pIdx + 2] = Math.round(sb / count);
+            }
           }
+        }
+      }
 
-          ctx.putImageData(imageData, 0, 0);
-          resolve(c.toDataURL('image/png'));
-        };
-        img.src = dataUrl;
-      });
+      wCtx.putImageData(imgData, 0, 0);
+
+      // Update the product image with erased version
+      const newSrc = workCanvas.toDataURL('image/png');
+      const newImg = new Image();
+      newImg.onload = () => {
+        // Reset position since the new image includes positioning
+        productImg.src = newSrc;
+        item.originalDataUrl = newSrc;
+        item.img = newImg;
+        item.originalImg = newImg;
+        // Reset transforms — image now includes position baked in
+        item.x = 0;
+        item.y = 0;
+        item.imgScale = 1;
+        productImg.style.left = '0px';
+        productImg.style.top = '0px';
+        productImg.style.transform = 'scale(1)';
+        productImg.style.maxWidth = '100%';
+        productImg.style.maxHeight = '100%';
+        // Clear erase canvas
+        eCtx.clearRect(0, 0, ew, eh);
+      };
+      newImg.src = newSrc;
     }
 
     // ── Sharpen image via convolution ──
