@@ -149,6 +149,7 @@ class handler(BaseHTTPRequestHandler):
                     "Authorization": f"Bearer {STABILITY_API_KEY}",
                     "Content-Type": content_type,
                     "Accept": "image/*",
+                    "User-Agent": "ProductImageTool/1.0",
                 },
                 method="POST",
             )
