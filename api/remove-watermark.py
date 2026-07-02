@@ -3,10 +3,11 @@ import json
 import os
 import base64
 import io
+import struct
+import zlib
 import urllib.request
 import urllib.error
 import uuid
-from PIL import Image, ImageDraw, ImageFilter
 
 STABILITY_API_KEY = os.environ.get("STABILITY_API_KEY", "")
 
@@ -32,73 +33,78 @@ def build_multipart(fields, files):
     return body, content_type
 
 
-def detect_watermark_mask(image_bytes):
-    """Detect semi-transparent watermark regions and create a mask for inpainting."""
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    w, h = img.size
-    gray = img.convert("L")
+def make_png_chunk(chunk_type, data):
+    chunk = chunk_type + data
+    crc = struct.pack(">I", zlib.crc32(chunk) & 0xFFFFFFFF)
+    return struct.pack(">I", len(data)) + chunk + crc
 
-    # Create mask - start with all black (keep everything)
-    mask = Image.new("L", (w, h), 0)
-    draw = ImageDraw.Draw(mask)
 
-    # Strategy: detect areas with subtle contrast variations typical of watermarks
-    # Watermarks create a consistent semi-transparent overlay pattern
-    # We look for areas where local contrast differs from neighbors in a watermark-like way
+def create_ellipse_mask_png(width, height):
+    """Create a PNG mask with a white ellipse in the center-bottom area (no Pillow needed)."""
+    # Ellipse parameters — generous coverage of typical watermark region
+    cx = width / 2
+    cy = height * 0.55
+    rx = width * 0.38
+    ry = height * 0.28
+    # Feather radius for smooth edges
+    feather = min(width, height) * 0.05
 
-    pixels = gray.load()
-    mask_pixels = mask.load()
+    rows = []
+    for y in range(height):
+        row = bytearray(width)
+        for x in range(width):
+            dx = (x - cx) / rx
+            dy = (y - cy) / ry
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist <= 1.0:
+                row[x] = 255
+            elif dist <= 1.0 + feather / min(rx, ry):
+                # Feathered edge
+                t = (dist - 1.0) / (feather / min(rx, ry))
+                row[x] = int(255 * (1 - t))
+            else:
+                row[x] = 0
+        # PNG filter byte (0 = None) + row data
+        rows.append(b"\x00" + bytes(row))
 
-    # Scan for watermark-like patterns: areas where pixel values
-    # deviate slightly from their local neighborhood average
-    # (watermarks create consistent low-amplitude patterns)
-    block = 8
-    threshold_low = 3   # minimum deviation to consider
-    threshold_high = 40  # maximum deviation (real edges are higher)
+    raw = b"".join(rows)
+    compressed = zlib.compress(raw)
 
-    for by in range(block, h - block, block):
-        for bx in range(block, w - block, block):
-            # Get center block average
-            center_sum = 0
-            for dy in range(-1, 2):
-                for dx in range(-1, 2):
-                    center_sum += pixels[bx + dx, by + dy]
-            center_avg = center_sum / 9
+    # Build PNG file
+    png = b"\x89PNG\r\n\x1a\n"
+    # IHDR: width, height, bit depth 8, color type 0 (grayscale)
+    ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+    png += make_png_chunk(b"IHDR", ihdr_data)
+    png += make_png_chunk(b"IDAT", compressed)
+    png += make_png_chunk(b"IEND", b"")
+    return png
 
-            # Get surrounding average (larger radius)
-            surround_sum = 0
-            count = 0
-            for dy in range(-block, block + 1, 2):
-                for dx in range(-block, block + 1, 2):
-                    nx, ny = bx + dx, by + dy
-                    if 0 <= nx < w and 0 <= ny < h:
-                        surround_sum += pixels[nx, ny]
-                        count += 1
-            surround_avg = surround_sum / max(count, 1)
 
-            diff = abs(center_avg - surround_avg)
-            if threshold_low < diff < threshold_high:
-                # Mark this block as potential watermark
-                for dy in range(-block // 2, block // 2 + 1):
-                    for dx in range(-block // 2, block // 2 + 1):
-                        nx, ny = bx + dx, by + dy
-                        if 0 <= nx < w and 0 <= ny < h:
-                            mask_pixels[nx, ny] = 255
-
-    # Also add a generous ellipse covering the typical watermark region
-    # (center-bottom area where vendor watermarks usually sit)
-    cx, cy = w // 2, int(h * 0.55)
-    rx, ry = int(w * 0.35), int(h * 0.25)
-    draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=255)
-
-    # Dilate the mask to ensure full coverage
-    mask = mask.filter(ImageFilter.MaxFilter(15))
-    # Blur edges for smooth inpainting transitions
-    mask = mask.filter(ImageFilter.GaussianBlur(radius=8))
-
-    buf = io.BytesIO()
-    mask.save(buf, format="PNG")
-    return buf.getvalue()
+def get_image_dimensions(image_bytes):
+    """Read width/height from PNG or JPEG header."""
+    if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        w = struct.unpack(">I", image_bytes[16:20])[0]
+        h = struct.unpack(">I", image_bytes[20:24])[0]
+        return w, h
+    # JPEG - scan for SOF marker
+    i = 0
+    while i < len(image_bytes) - 1:
+        if image_bytes[i] == 0xFF:
+            marker = image_bytes[i + 1]
+            if marker in (0xC0, 0xC1, 0xC2):
+                h = struct.unpack(">H", image_bytes[i + 5:i + 7])[0]
+                w = struct.unpack(">H", image_bytes[i + 7:i + 9])[0]
+                return w, h
+            elif marker == 0xD8 or marker == 0xD9:
+                i += 2
+            elif marker == 0xFF:
+                i += 1
+            else:
+                seg_len = struct.unpack(">H", image_bytes[i + 2:i + 4])[0]
+                i += 2 + seg_len
+        else:
+            i += 1
+    return 512, 512  # fallback
 
 
 class handler(BaseHTTPRequestHandler):
@@ -121,10 +127,11 @@ class handler(BaseHTTPRequestHandler):
             else:
                 image_bytes = base64.b64decode(image_data_url)
 
-            # Generate watermark mask
-            mask_bytes = detect_watermark_mask(image_bytes)
+            # Get image dimensions and create mask
+            w, h = get_image_dimensions(image_bytes)
+            mask_bytes = create_ellipse_mask_png(w, h)
 
-            # Use Stability AI erase endpoint with the detected mask
+            # Use Stability AI erase endpoint with the mask
             fields = {
                 "output_format": "png",
             }
