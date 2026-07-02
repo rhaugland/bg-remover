@@ -52,7 +52,7 @@ class handler(BaseHTTPRequestHandler):
                             },
                             {
                                 "type": "text",
-                                "text": 'Look at this product image. Is there a watermark, logo overlay, or brand stamp on it? If yes, return JSON with the watermark bounding box as percentages of the image dimensions: {"found": true, "x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}. If no watermark is found, return {"found": false}. Return ONLY the JSON, no other text.',
+                                "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, or semi-transparent text/graphic overlaid on the product? If yes, return JSON with ALL watermark regions as an array. Be GENEROUS with the bounding boxes - make them 20% larger than the visible watermark to ensure full coverage. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. Include every part of the watermark (logo, text, wings, etc) as separate regions if they are spread apart. If no watermark found, return {"found": false}. Return ONLY JSON.',
                             },
                         ],
                     }
