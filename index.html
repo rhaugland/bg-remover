@@ -1809,9 +1809,12 @@
               });
               if (detectResp.ok) {
                 const detection = await detectResp.json();
+                console.log('Watermark detection:', JSON.stringify(detection));
                 if (detection.found) {
                   if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
+                  // Run removal twice for thorough cleaning
                   imageToProcess = await canvasInpaint(dataUrl, detection);
+                  imageToProcess = await canvasInpaint(imageToProcess, detection);
                 }
               }
             } catch (wmErr) {
@@ -2203,13 +2206,12 @@
             const rw = Math.min(w - rx, Math.ceil((region.w / 100) * w));
             const rh = Math.min(h - ry, Math.ceil((region.h / 100) * h));
 
-            // Calculate average brightness of border pixels (clean area)
+            // Sample clean pixels from OUTSIDE the watermark region (wider border)
             let borderSum = [0, 0, 0];
             let borderCount = 0;
-            const sampleDist = 8;
+            const sampleDist = 20;
             for (let y = Math.max(0, ry - sampleDist); y < Math.min(h, ry + rh + sampleDist); y++) {
               for (let x = Math.max(0, rx - sampleDist); x < Math.min(w, rx + rw + sampleDist); x++) {
-                // Only sample border pixels (outside the watermark)
                 if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) continue;
                 const idx = (y * w + x) * 4;
                 borderSum[0] += data[idx];
@@ -2221,39 +2223,35 @@
             if (borderCount === 0) continue;
             const borderAvg = borderSum.map(s => s / borderCount);
 
-            // For each pixel in the watermark region, reverse the alpha blend
-            // Watermark formula: displayed = original * (1-α) + wmColor * α
-            // Assuming dark watermark (wmColor ≈ 40), estimate α from brightness difference
-            const wmColor = 40; // watermark is dark gray/black
+            // Reverse the alpha blend of the semi-transparent watermark
+            // displayed = original * (1-α) + wmColor * α
+            // The watermark is very dark (near black)
+            const wmColor = 20;
 
             for (let y = ry; y < ry + rh && y < h; y++) {
               for (let x = rx; x < rx + rw && x < w; x++) {
                 const idx = (y * w + x) * 4;
 
-                // Feather: reduce effect near edges of region
+                // Feather at edges
                 const edgeDist = Math.min(x - rx, rx + rw - 1 - x, y - ry, ry + rh - 1 - y);
-                const feather = Math.min(1, edgeDist / 15);
+                const feather = Math.min(1, edgeDist / 10);
 
                 for (let ch = 0; ch < 3; ch++) {
                   const pixel = data[idx + ch];
                   const border = borderAvg[ch];
 
-                  // Estimate local alpha: how much darker is this pixel vs expected?
-                  // α = (border - pixel) / (border - wmColor)
                   const denom = border - wmColor;
-                  if (denom <= 10) continue; // can't estimate if border is dark too
+                  if (denom <= 5) continue;
 
                   let alpha = (border - pixel) / denom;
-                  alpha = Math.max(0, Math.min(0.6, alpha)); // clamp - watermarks are max ~60% opacity
+                  alpha = Math.max(0, Math.min(0.85, alpha));
 
-                  // Reverse: original = (pixel - wmColor * α) / (1 - α)
                   let original = pixel;
-                  if (alpha > 0.02) {
+                  if (alpha > 0.01) {
                     original = (pixel - wmColor * alpha) / (1 - alpha);
                     original = Math.max(0, Math.min(255, original));
                   }
 
-                  // Apply with feathering
                   data[idx + ch] = Math.round(pixel + (original - pixel) * feather);
                 }
               }
