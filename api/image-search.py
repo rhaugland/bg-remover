@@ -24,8 +24,8 @@ class handler(BaseHTTPRequestHandler):
 
             # Search Brave Images for the part number
             params = urllib.parse.urlencode({
-                "q": query,
-                "count": 10,
+                "q": f"{query} product photo -watermark -stock",
+                "count": 20,
                 "search_lang": "en",
                 "safesearch": "off",
             })

@@ -1798,20 +1798,6 @@
           const prog = spinnerEl.querySelector('.progress-text');
           let imageToProcess = dataUrl;
 
-          // Remove watermarks for images from part lookup
-          if (photosFromLookup) {
-            if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
-            const wmResp = await fetch('/api/remove-watermark', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ image: dataUrl }),
-            });
-            if (wmResp.ok) {
-              const wmData = await wmResp.json();
-              imageToProcess = wmData.image;
-            }
-          }
-
           if (prog) prog.textContent = `Removing background ${i + 1}/${photos.length}...`;
 
           const resp = await fetch('/api/remove-bg', {
