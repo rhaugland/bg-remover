@@ -2318,99 +2318,126 @@
       const ew = eraseCanvas.width;
       const eh = eraseCanvas.height;
 
-      // Get the erase mask (red painted areas)
+      // Get the erase mask
       const eraseData = eCtx.getImageData(0, 0, ew, eh);
 
-      // Work directly on the product image (transparent PNG)
+      // Render the product onto a canvas at erase canvas resolution
       const workCanvas = document.createElement('canvas');
-      const imgW = item.img.naturalWidth;
-      const imgH = item.img.naturalHeight;
-      workCanvas.width = imgW;
-      workCanvas.height = imgH;
+      workCanvas.width = ew;
+      workCanvas.height = eh;
       const wCtx = workCanvas.getContext('2d');
-      wCtx.drawImage(productImg, 0, 0, imgW, imgH);
 
-      const imgData = wCtx.getImageData(0, 0, imgW, imgH);
+      // Draw product at its current stage position (scaled to erase canvas res)
+      const scale = ew / stage.offsetWidth;
+      const baseW = productImg.offsetWidth;
+      const baseH = productImg.offsetHeight;
+      wCtx.drawImage(productImg,
+        item.x * scale, item.y * scale,
+        baseW * item.imgScale * scale, baseH * item.imgScale * scale
+      );
+
+      const imgData = wCtx.getImageData(0, 0, ew, eh);
       const pixels = imgData.data;
 
-      // Map erase canvas coords to product image coords
-      const stageW = stage.offsetWidth;
-      const stageH = stage.offsetHeight;
-      const dispW = productImg.offsetWidth * item.imgScale;
-      const dispH = productImg.offsetHeight * item.imgScale;
-
-      // First pass: find average clean color from non-brushed product pixels
-      // near the brushed area for reference
-      const brushedPixels = new Set();
-
-      for (let py = 0; py < imgH; py++) {
-        for (let px = 0; px < imgW; px++) {
-          // Map product pixel to stage/erase canvas position
-          const stageX = item.x + (px / imgW) * dispW;
-          const stageY = item.y + (py / imgH) * dispH;
-          const ex = Math.round(stageX / stageW * ew);
-          const ey = Math.round(stageY / stageH * eh);
-
-          if (ex < 0 || ey < 0 || ex >= ew || ey >= eh) continue;
-
-          const eIdx = (ey * ew + ex) * 4;
-          const pIdx = (py * imgW + px) * 4;
-
-          // Only process if: user painted here AND pixel is part of product (not transparent)
-          if (eraseData.data[eIdx + 3] > 10 && pixels[pIdx + 3] > 50) {
-            brushedPixels.add(py * imgW + px);
-          }
+      // Find all brushed product pixels
+      const brushed = [];
+      for (let i = 0; i < ew * eh; i++) {
+        const pi = i * 4;
+        if (eraseData.data[pi + 3] > 10 && pixels[pi + 3] > 50) {
+          brushed.push(i);
         }
       }
 
-      if (brushedPixels.size === 0) {
+      if (brushed.length === 0) {
         eCtx.clearRect(0, 0, ew, eh);
         return;
       }
 
-      // For each brushed product pixel, sample clean neighbors and blend toward them
-      for (const key of brushedPixels) {
-        const px = key % imgW;
-        const py = Math.floor(key / imgW);
-        const pIdx = (py * imgW + px) * 4;
+      const brushedSet = new Set(brushed);
 
-        // Sample surrounding NON-brushed product pixels
+      // For each brushed pixel, blend toward surrounding clean pixels
+      for (const i of brushed) {
+        const x = i % ew;
+        const y = Math.floor(i / ew);
+        const pi = i * 4;
+
         let sr = 0, sg = 0, sb = 0, count = 0;
-        const radius = 25;
-        for (let sy = py - radius; sy <= py + radius; sy += 3) {
-          for (let sx = px - radius; sx <= px + radius; sx += 3) {
-            if (sx < 0 || sy < 0 || sx >= imgW || sy >= imgH) continue;
-            const sKey = sy * imgW + sx;
-            if (brushedPixels.has(sKey)) continue; // skip brushed pixels
-            const sIdx = sKey * 4;
-            if (pixels[sIdx + 3] > 50) { // only sample visible product pixels
-              sr += pixels[sIdx];
-              sg += pixels[sIdx + 1];
-              sb += pixels[sIdx + 2];
+        const radius = 20;
+        for (let sy = y - radius; sy <= y + radius; sy += 2) {
+          for (let sx = x - radius; sx <= x + radius; sx += 2) {
+            if (sx < 0 || sy < 0 || sx >= ew || sy >= eh) continue;
+            const si = sy * ew + sx;
+            if (brushedSet.has(si)) continue;
+            const spi = si * 4;
+            if (pixels[spi + 3] > 50) {
+              sr += pixels[spi];
+              sg += pixels[spi + 1];
+              sb += pixels[spi + 2];
               count++;
             }
           }
         }
 
         if (count > 0) {
-          const avgR = sr / count;
-          const avgG = sg / count;
-          const avgB = sb / count;
-
-          // Blend this pixel toward the clean average
-          // Stronger effect = more watermark removed
-          const strength = 0.85;
-          pixels[pIdx] = Math.round(pixels[pIdx] + (avgR - pixels[pIdx]) * strength);
-          pixels[pIdx + 1] = Math.round(pixels[pIdx + 1] + (avgG - pixels[pIdx + 1]) * strength);
-          pixels[pIdx + 2] = Math.round(pixels[pIdx + 2] + (avgB - pixels[pIdx + 2]) * strength);
-          // Keep alpha unchanged — don't touch transparency
+          pixels[pi] = Math.round(sr / count);
+          pixels[pi + 1] = Math.round(sg / count);
+          pixels[pi + 2] = Math.round(sb / count);
         }
       }
 
       wCtx.putImageData(imgData, 0, 0);
 
-      // Update the product image (keep same position/scale)
-      const newSrc = workCanvas.toDataURL('image/png');
+      // Extract just the product region back to original resolution
+      const outCanvas = document.createElement('canvas');
+      const imgW = item.img.naturalWidth;
+      const imgH = item.img.naturalHeight;
+      outCanvas.width = imgW;
+      outCanvas.height = imgH;
+      const oCtx = outCanvas.getContext('2d');
+
+      // Map back: stage coords -> product image coords
+      const prodX = item.x * scale;
+      const prodY = item.y * scale;
+      const prodW = baseW * item.imgScale * scale;
+      const prodH = baseH * item.imgScale * scale;
+
+      // Draw the cleaned region back onto original product
+      oCtx.drawImage(productImg, 0, 0, imgW, imgH);
+
+      // Overlay the cleaned pixels from workCanvas
+      // Create a temp canvas with just the product area from workCanvas
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = imgW;
+      tempCanvas.height = imgH;
+      const tCtx = tempCanvas.getContext('2d');
+      tCtx.drawImage(workCanvas, prodX, prodY, prodW, prodH, 0, 0, imgW, imgH);
+
+      // Only replace pixels that were brushed
+      const origData = oCtx.getImageData(0, 0, imgW, imgH);
+      const cleanData = tCtx.getImageData(0, 0, imgW, imgH);
+      const origPx = origData.data;
+      const cleanPx = cleanData.data;
+
+      for (let py = 0; py < imgH; py++) {
+        for (let px = 0; px < imgW; px++) {
+          // Map back to erase canvas to check if brushed
+          const ex = Math.round(prodX + (px / imgW) * prodW);
+          const ey = Math.round(prodY + (py / imgH) * prodH);
+          if (ex < 0 || ey < 0 || ex >= ew || ey >= eh) continue;
+          const eIdx = (ey * ew + ex) * 4;
+          if (eraseData.data[eIdx + 3] > 10) {
+            const oi = (py * imgW + px) * 4;
+            origPx[oi] = cleanPx[oi];
+            origPx[oi + 1] = cleanPx[oi + 1];
+            origPx[oi + 2] = cleanPx[oi + 2];
+            // Keep original alpha
+          }
+        }
+      }
+
+      oCtx.putImageData(origData, 0, 0);
+
+      const newSrc = outCanvas.toDataURL('image/png');
       const newImg = new Image();
       newImg.onload = () => {
         productImg.src = newSrc;
