@@ -1798,6 +1798,27 @@
           const prog = spinnerEl.querySelector('.progress-text');
           let imageToProcess = dataUrl;
 
+          // Remove watermarks for images from part lookup
+          if (photosFromLookup) {
+            if (prog) prog.textContent = `Detecting watermark ${i + 1}/${photos.length}...`;
+            try {
+              const detectResp = await fetch('/api/detect-watermark', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: dataUrl }),
+              });
+              if (detectResp.ok) {
+                const detection = await detectResp.json();
+                if (detection.found) {
+                  if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
+                  imageToProcess = await canvasInpaint(dataUrl, detection);
+                }
+              }
+            } catch (wmErr) {
+              console.error('Watermark detection failed:', wmErr);
+            }
+          }
+
           if (prog) prog.textContent = `Removing background ${i + 1}/${photos.length}...`;
 
           const resp = await fetch('/api/remove-bg', {
@@ -2155,6 +2176,72 @@
         setScale(Math.max(0.1, Math.min(5, getScale() * delta)));
         applyTransform();
       }, { passive: false });
+    }
+
+    // ── Canvas-based watermark inpainting ──
+    function canvasInpaint(dataUrl, detection) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement('canvas');
+          const w = img.naturalWidth;
+          const h = img.naturalHeight;
+          c.width = w;
+          c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+
+          // Watermark region from detection (percentages)
+          const rx = Math.max(0, Math.floor((detection.x / 100) * w) - 5);
+          const ry = Math.max(0, Math.floor((detection.y / 100) * h) - 5);
+          const rw = Math.min(w - rx, Math.ceil((detection.w / 100) * w) + 10);
+          const rh = Math.min(h - ry, Math.ceil((detection.h / 100) * h) + 10);
+
+          // Sample colors from edges around the watermark region
+          const imageData = ctx.getImageData(0, 0, w, h);
+          const data = imageData.data;
+
+          // For each pixel in the watermark region, replace with
+          // interpolated color from the nearest edge pixels
+          for (let y = ry; y < ry + rh && y < h; y++) {
+            for (let x = rx; x < rx + rw && x < w; x++) {
+              // Distance ratios from edges of the region
+              const tx = (x - rx) / Math.max(rw, 1);
+              const ty = (y - ry) / Math.max(rh, 1);
+
+              // Sample from 4 edges
+              const leftX = Math.max(0, rx - 3);
+              const rightX = Math.min(w - 1, rx + rw + 3);
+              const topY = Math.max(0, ry - 3);
+              const bottomY = Math.min(h - 1, ry + rh + 3);
+
+              // Get edge pixel colors
+              const li = (y * w + leftX) * 4;
+              const ri = (y * w + rightX) * 4;
+              const ti = (topY * w + x) * 4;
+              const bi = (bottomY * w + x) * 4;
+
+              // Bilinear interpolation from edges
+              const idx = (y * w + x) * 4;
+              for (let ch = 0; ch < 3; ch++) {
+                const horizBlend = data[li + ch] * (1 - tx) + data[ri + ch] * tx;
+                const vertBlend = data[ti + ch] * (1 - ty) + data[bi + ch] * ty;
+                data[idx + ch] = Math.round((horizBlend + vertBlend) / 2);
+              }
+            }
+          }
+
+          ctx.putImageData(imageData, 0, 0);
+
+          // Slight blur over the region to smooth edges
+          ctx.filter = 'blur(2px)';
+          ctx.drawImage(c, rx, ry, rw, rh, rx, ry, rw, rh);
+          ctx.filter = 'none';
+
+          resolve(c.toDataURL('image/png'));
+        };
+        img.src = dataUrl;
+      });
     }
 
     // ── Sharpen image via convolution ──
