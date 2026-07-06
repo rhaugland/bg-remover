@@ -59,7 +59,7 @@ def detect_watermark(b64data, media_type, second_pass=False):
     return {"found": False}
 
 
-def create_mask_png(width, height, regions):
+def create_mask_png(width, height, regions, pad_pct=0.1):
     """Create a black/white PNG mask using pure Python (no Pillow).
     White (255) = areas to inpaint, Black (0) = areas to keep."""
     import struct
@@ -74,9 +74,8 @@ def create_mask_png(width, height, regions):
         rw = int(region["w"] / 100 * width)
         rh = int(region["h"] / 100 * height)
 
-        # Small padding per region since we now use multiple tight boxes
-        pad_w = int(rw * 0.1)
-        pad_h = int(rh * 0.1)
+        pad_w = int(rw * pad_pct)
+        pad_h = int(rh * pad_pct)
         rx = rx - pad_w
         ry = ry - pad_h
         rw = rw + pad_w * 2
@@ -272,7 +271,7 @@ class handler(BaseHTTPRequestHandler):
             detection2 = detect_watermark(result_b64, content_type, second_pass=True)
             if detection2.get("found"):
                 regions2 = detection2.get("regions", [])
-                mask_png2 = create_mask_png(width, height, regions2)
+                mask_png2 = create_mask_png(width, height, regions2, pad_pct=0.25)
                 mask_b64_2 = base64.b64encode(mask_png2).decode()
                 output_url2 = run_lama(result_data_url, mask_b64_2)
 
