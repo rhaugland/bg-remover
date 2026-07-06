@@ -31,7 +31,7 @@ def detect_watermark(b64data, media_type, second_pass=False):
                     },
                     {
                         "type": "text",
-                        "text": 'Look at this product image carefully. Is there a faint watermark, ghost image, logo remnant, eagle wings, "AMI" text, or any semi-transparent overlay on the product? Look especially for very faint or partially removed watermarks. If yes, return JSON with a SINGLE bounding box covering the ENTIRE affected area. The box should fit snugly around all traces with a small margin. Do NOT make it so large that it covers the actual product edges. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.' if second_pass else 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent text/graphic overlaid on the product? If yes, return JSON with a SINGLE bounding box that tightly covers the ENTIRE watermark including all wings, text, and decorative elements. The bounding box should fit snugly around the watermark with just a small margin. Do NOT make it so large that it covers the product itself. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.',
+                        "text": 'Look at this product image carefully. Is there a faint watermark remnant, ghost image, logo trace, faint wing shape, or any semi-transparent artifact? Look for very subtle discoloration. If yes, return MULTIPLE tight bounding boxes for each trace. Use percentages: {"found": true, "regions": [{"x": pct_left, "y": pct_top, "w": pct_width, "h": pct_height}]}. Keep boxes tight to just the artifact. If clean, return {"found": false}. Return ONLY JSON.' if second_pass else 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent graphic overlaid on the product? If yes, return MULTIPLE separate bounding boxes - one for each distinct part (e.g. left wing, right wing, center logo, text below). Each box should TIGHTLY fit just that part of the watermark with minimal extra space. Do NOT use one giant box. Do NOT include areas that are just the product surface. Use percentages of image dimensions: {"found": true, "regions": [{"x": pct_left, "y": pct_top, "w": pct_width, "h": pct_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.',
                     },
                 ],
             }
@@ -74,9 +74,9 @@ def create_mask_png(width, height, regions):
         rw = int(region["w"] / 100 * width)
         rh = int(region["h"] / 100 * height)
 
-        # Small padding to catch edges without eating into product
-        pad_w = int(rw * 0.15)
-        pad_h = int(rh * 0.15)
+        # Small padding per region since we now use multiple tight boxes
+        pad_w = int(rw * 0.1)
+        pad_h = int(rh * 0.1)
         rx = rx - pad_w
         ry = ry - pad_h
         rw = rw + pad_w * 2
