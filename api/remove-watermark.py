@@ -15,7 +15,7 @@ LAMA_VERSION = "cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72
 def detect_watermark(b64data, media_type, second_pass=False):
     """Use Claude Haiku to detect watermark regions."""
     api_body = json.dumps({
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-sonnet-4-20250514",
         "max_tokens": 300,
         "messages": [
             {
@@ -74,9 +74,9 @@ def create_mask_png(width, height, regions):
         rw = int(region["w"] / 100 * width)
         rh = int(region["h"] / 100 * height)
 
-        # Expand more horizontally (wings spread wide) than vertically
-        pad_w = int(rw * 0.4)
-        pad_h = int(rh * 0.2)
+        # Small padding to catch edges without eating into product
+        pad_w = int(rw * 0.15)
+        pad_h = int(rh * 0.15)
         rx = rx - pad_w
         ry = ry - pad_h
         rw = rw + pad_w * 2
