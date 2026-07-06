@@ -4,37 +4,15 @@ import os
 import base64
 import urllib.request
 import urllib.error
-import uuid
 
-STABILITY_API_KEY = os.environ.get("STABILITY_API_KEY", "")
-
-
-def build_multipart(fields, files):
-    boundary = uuid.uuid4().hex
-    lines = []
-    for key, value in fields.items():
-        lines.append(f"--{boundary}".encode())
-        lines.append(f'Content-Disposition: form-data; name="{key}"'.encode())
-        lines.append(b"")
-        lines.append(value.encode() if isinstance(value, str) else value)
-    for key, (filename, data, content_type) in files.items():
-        lines.append(f"--{boundary}".encode())
-        lines.append(f'Content-Disposition: form-data; name="{key}"; filename="{filename}"'.encode())
-        lines.append(f"Content-Type: {content_type}".encode())
-        lines.append(b"")
-        lines.append(data)
-    lines.append(f"--{boundary}--".encode())
-    lines.append(b"")
-    body = b"\r\n".join(lines)
-    content_type = f"multipart/form-data; boundary={boundary}"
-    return body, content_type
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
-            if not STABILITY_API_KEY:
-                raise ValueError("STABILITY_API_KEY not configured")
+            if not ANTHROPIC_API_KEY:
+                raise ValueError("ANTHROPIC_API_KEY not configured")
 
             content_length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(content_length))
@@ -43,53 +21,72 @@ class handler(BaseHTTPRequestHandler):
             if not image_data_url:
                 raise ValueError("Image is required")
 
-            # Extract binary image data from data URL
+            # Extract media type and base64 data
             if "," in image_data_url:
-                header, b64data = image_data_url.split(",", 1)
-                image_bytes = base64.b64decode(b64data)
+                header = image_data_url.split(",")[0]
+                b64data = image_data_url.split(",")[1]
                 if "png" in header:
-                    mime = "image/png"
-                    ext = "image.png"
+                    media_type = "image/png"
+                elif "webp" in header:
+                    media_type = "image/webp"
                 else:
-                    mime = "image/jpeg"
-                    ext = "image.jpg"
+                    media_type = "image/jpeg"
             else:
-                image_bytes = base64.b64decode(image_data_url)
-                mime = "image/png"
-                ext = "image.png"
+                b64data = image_data_url
+                media_type = "image/jpeg"
 
-            # Use search-and-replace to find and remove the watermark
-            fields = {
-                "prompt": "clean product surface, original color and texture, no markings",
-                "search_prompt": "watermark logo text overlay on the product",
-                "negative_prompt": "watermark, logo, text, eagle, wings, stamp, overlay",
-                "output_format": "png",
-            }
-            files = {
-                "image": (ext, image_bytes, mime),
-            }
-
-            req_body, content_type = build_multipart(fields, files)
+            api_body = json.dumps({
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 4096,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": b64data,
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": "This product image has a watermark/logo overlay on it. Please regenerate this exact same image but with the watermark completely removed. Keep the product exactly the same - same angle, same colors, same details. Only remove the watermark/logo overlay. Output just the cleaned image.",
+                            },
+                        ],
+                    }
+                ],
+            }).encode()
 
             req = urllib.request.Request(
-                "https://api.stability.ai/v2beta/stable-image/edit/search-and-replace",
-                data=req_body,
+                "https://api.anthropic.com/v1/messages",
+                data=api_body,
                 headers={
-                    "Authorization": f"Bearer {STABILITY_API_KEY}",
-                    "Content-Type": content_type,
-                    "Accept": "image/*",
-                    "User-Agent": "ProductImageTool/1.0",
+                    "Content-Type": "application/json",
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
                 },
                 method="POST",
             )
 
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                result_bytes = resp.read()
+            with urllib.request.urlopen(req, timeout=55) as resp:
+                result = json.loads(resp.read())
 
-            result_b64 = base64.b64encode(result_bytes).decode()
-            result_data_url = f"data:image/png;base64,{result_b64}"
+            # Find the image block in the response
+            image_result = None
+            for block in result.get("content", []):
+                if block.get("type") == "image":
+                    source = block.get("source", {})
+                    img_b64 = source.get("data", "")
+                    img_mime = source.get("media_type", "image/png")
+                    image_result = f"data:{img_mime};base64,{img_b64}"
+                    break
 
-            response = json.dumps({"image": result_data_url})
+            if not image_result:
+                raise ValueError("Claude did not return an image. Response: " + json.dumps(result.get("content", [])[:1]))
+
+            response = json.dumps({"image": image_result})
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(response)))
@@ -98,7 +95,7 @@ class handler(BaseHTTPRequestHandler):
 
         except urllib.error.HTTPError as e:
             err_body = e.read().decode()
-            error = json.dumps({"error": f"Stability API error {e.code}: {err_body}"})
+            error = json.dumps({"error": f"Claude API error {e.code}: {err_body}"})
             self.send_response(502)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(error)))

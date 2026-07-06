@@ -495,47 +495,6 @@
 
     .drag-stage.dragged .drag-hint { opacity: 0; }
 
-    /* ── Erase tool ── */
-    .erase-canvas {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 5;
-      cursor: crosshair;
-      display: none;
-    }
-    .drag-stage.erase-mode .erase-canvas { display: block; }
-    .drag-stage.erase-mode .drag-hint { display: none; }
-    .drag-stage.erase-mode { cursor: crosshair; }
-    .erase-btn {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.3);
-      border-radius: 6px;
-      padding: 4px 10px;
-      font-size: 11px;
-      z-index: 10;
-      cursor: pointer;
-      pointer-events: auto;
-    }
-    .erase-btn.active {
-      background: rgba(255,60,60,0.7);
-      border-color: rgba(255,60,60,0.9);
-    }
-    .erase-size-row {
-      display: none;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      font-size: 12px;
-      color: #aaa;
-    }
-    .erase-size-row.visible { display: flex; }
-    .erase-size-row input[type="range"] { flex: 1; }
-
     /* ── Background color picker ── */
     .bg-picker {
       display: flex;
@@ -1675,7 +1634,6 @@
     const reviewContent = document.getElementById('review-content');
 
     let photos = [];
-    let photosFromLookup = false;
     let stream = null;
     let cameraReady = false;
     video.setAttribute('webkit-playsinline', '');
@@ -1839,6 +1797,24 @@
           const prog = spinnerEl.querySelector('.progress-text');
           let imageToProcess = dataUrl;
 
+          // Try to remove vendor watermark via Claude vision
+          if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
+          try {
+            const wmResp = await fetch('/api/remove-watermark', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: imageToProcess }),
+            });
+            if (wmResp.ok) {
+              const wmData = await wmResp.json();
+              if (wmData.image) {
+                imageToProcess = wmData.image;
+              }
+            }
+          } catch (wmErr) {
+            console.warn('Watermark removal skipped:', wmErr);
+          }
+
           if (prog) prog.textContent = `Removing background ${i + 1}/${photos.length}...`;
 
           const resp = await fetch('/api/remove-bg', {
@@ -1886,52 +1862,13 @@
           hint.className = 'drag-hint';
           hint.textContent = 'Drag to move \u00b7 Pinch to resize';
 
-          // Erase canvas overlay
-          const eraseCanvas = document.createElement('canvas');
-          eraseCanvas.className = 'erase-canvas';
-
-          const eraseBtn = document.createElement('button');
-          eraseBtn.className = 'erase-btn';
-          eraseBtn.textContent = 'Erase';
-
           stage.appendChild(productImg);
           stage.appendChild(watermarkImg);
-          stage.appendChild(eraseCanvas);
-          stage.appendChild(eraseBtn);
           stage.appendChild(modeToggle);
           stage.appendChild(hint);
 
           // Center product initially after stage is in DOM
-          const item = { stage, productImg, watermarkImg, eraseCanvas, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000', sharpness: 0, originalDataUrl: resultDataUrl, originalImg: img, wmX: 0, wmY: 0, wmScale: 1, dragMode: 'product', eraseMode: false, eraseBrushSize: 25 };
-
-          // Erase mode toggle
-          eraseBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            item.eraseMode = !item.eraseMode;
-            if (item.eraseMode) {
-              eraseBtn.textContent = 'Done Erasing';
-              eraseBtn.classList.add('active');
-              stage.classList.add('erase-mode');
-              modeToggle.style.display = 'none';
-              // Size the erase canvas to match the stage
-              eraseCanvas.width = stage.offsetWidth * 2;
-              eraseCanvas.height = stage.offsetHeight * 2;
-              eraseCanvas.style.width = stage.offsetWidth + 'px';
-              eraseCanvas.style.height = stage.offsetHeight + 'px';
-              item.eraseSizeRow.classList.add('visible');
-            } else {
-              eraseBtn.textContent = 'Erase';
-              eraseBtn.classList.remove('active');
-              stage.classList.remove('erase-mode');
-              modeToggle.style.display = '';
-              item.eraseSizeRow.classList.remove('visible');
-              // Apply erase: composite the erased areas onto the product image
-              applyErase(item);
-            }
-          });
-
-          // Erase drawing handlers
-          setupEraseTool(item, eraseCanvas);
+          const item = { stage, productImg, watermarkImg, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000', sharpness: 0, originalDataUrl: resultDataUrl, originalImg: img, wmX: 0, wmY: 0, wmScale: 1, dragMode: 'product' };
 
           modeToggle.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1966,20 +1903,9 @@
           actions.appendChild(label);
           actions.appendChild(dlBtn);
           const sharpenRow = buildSharpenSlider(item);
-          // Erase brush size slider
-          const eraseSizeRow = document.createElement('div');
-          eraseSizeRow.className = 'erase-size-row';
-          eraseSizeRow.innerHTML = `<span>Brush</span><input type="range" min="5" max="60" value="25"><span class="erase-size-val">25</span>`;
-          eraseSizeRow.querySelector('input').addEventListener('input', (e) => {
-            item.eraseBrushSize = parseInt(e.target.value);
-            eraseSizeRow.querySelector('.erase-size-val').textContent = e.target.value;
-          });
-          item.eraseSizeRow = eraseSizeRow;
-
           card.appendChild(stage);
           card.appendChild(picker);
           card.appendChild(sharpenRow);
-          card.appendChild(eraseSizeRow);
           card.appendChild(actions);
           spinnerEl.replaceWith(card);
 
@@ -2135,8 +2061,6 @@
       // Touch events
       stage.addEventListener('touchstart', (e) => {
         if (e.target.classList.contains('drag-mode-toggle')) return;
-        if (e.target.classList.contains('erase-btn')) return;
-        if (item.eraseMode) return;
         e.preventDefault();
         stage.classList.add('dragged');
         const pos = getPos();
@@ -2249,205 +2173,6 @@
         setScale(Math.max(0.1, Math.min(5, getScale() * delta)));
         applyTransform();
       }, { passive: false });
-    }
-
-    // ── Erase tool for watermark removal ──
-    function setupEraseTool(item, canvas) {
-      const ctx = canvas.getContext('2d');
-      let drawing = false;
-
-      function getPos(e) {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const touch = e.touches ? e.touches[0] : e;
-        return {
-          x: (touch.clientX - rect.left) * scaleX,
-          y: (touch.clientY - rect.top) * scaleY,
-        };
-      }
-
-      function draw(e) {
-        if (!drawing || !item.eraseMode) return;
-        const pos = getPos(e);
-        const r = item.eraseBrushSize * 2; // 2x for retina canvas
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,0,0,0.25)';
-        ctx.fill();
-      }
-
-      canvas.addEventListener('touchstart', (e) => {
-        if (!item.eraseMode) return;
-        e.preventDefault();
-        e.stopPropagation();
-        drawing = true;
-        draw(e);
-      }, { passive: false });
-
-      canvas.addEventListener('touchmove', (e) => {
-        if (!item.eraseMode) return;
-        e.preventDefault();
-        e.stopPropagation();
-        draw(e);
-      }, { passive: false });
-
-      canvas.addEventListener('touchend', (e) => {
-        drawing = false;
-      });
-
-      canvas.addEventListener('mousedown', (e) => {
-        if (!item.eraseMode) return;
-        e.preventDefault();
-        e.stopPropagation();
-        drawing = true;
-        draw(e);
-      });
-
-      canvas.addEventListener('mousemove', (e) => {
-        if (!item.eraseMode) return;
-        draw(e);
-      });
-
-      canvas.addEventListener('mouseup', () => { drawing = false; });
-    }
-
-    function applyErase(item) {
-      const { productImg, eraseCanvas, stage } = item;
-      const eCtx = eraseCanvas.getContext('2d');
-      const ew = eraseCanvas.width;
-      const eh = eraseCanvas.height;
-
-      // Get the erase mask
-      const eraseData = eCtx.getImageData(0, 0, ew, eh);
-
-      // Render the product onto a canvas at erase canvas resolution
-      const workCanvas = document.createElement('canvas');
-      workCanvas.width = ew;
-      workCanvas.height = eh;
-      const wCtx = workCanvas.getContext('2d');
-
-      // Draw product at its current stage position (scaled to erase canvas res)
-      const scale = ew / stage.offsetWidth;
-      const baseW = productImg.offsetWidth;
-      const baseH = productImg.offsetHeight;
-      wCtx.drawImage(productImg,
-        item.x * scale, item.y * scale,
-        baseW * item.imgScale * scale, baseH * item.imgScale * scale
-      );
-
-      const imgData = wCtx.getImageData(0, 0, ew, eh);
-      const pixels = imgData.data;
-
-      // Find all brushed product pixels
-      const brushed = [];
-      for (let i = 0; i < ew * eh; i++) {
-        const pi = i * 4;
-        if (eraseData.data[pi + 3] > 10 && pixels[pi + 3] > 50) {
-          brushed.push(i);
-        }
-      }
-
-      if (brushed.length === 0) {
-        eCtx.clearRect(0, 0, ew, eh);
-        return;
-      }
-
-      const brushedSet = new Set(brushed);
-
-      // For each brushed pixel, blend toward surrounding clean pixels
-      for (const i of brushed) {
-        const x = i % ew;
-        const y = Math.floor(i / ew);
-        const pi = i * 4;
-
-        let sr = 0, sg = 0, sb = 0, count = 0;
-        const radius = 20;
-        for (let sy = y - radius; sy <= y + radius; sy += 2) {
-          for (let sx = x - radius; sx <= x + radius; sx += 2) {
-            if (sx < 0 || sy < 0 || sx >= ew || sy >= eh) continue;
-            const si = sy * ew + sx;
-            if (brushedSet.has(si)) continue;
-            const spi = si * 4;
-            if (pixels[spi + 3] > 50) {
-              sr += pixels[spi];
-              sg += pixels[spi + 1];
-              sb += pixels[spi + 2];
-              count++;
-            }
-          }
-        }
-
-        if (count > 0) {
-          pixels[pi] = Math.round(sr / count);
-          pixels[pi + 1] = Math.round(sg / count);
-          pixels[pi + 2] = Math.round(sb / count);
-        }
-      }
-
-      wCtx.putImageData(imgData, 0, 0);
-
-      // Extract just the product region back to original resolution
-      const outCanvas = document.createElement('canvas');
-      const imgW = item.img.naturalWidth;
-      const imgH = item.img.naturalHeight;
-      outCanvas.width = imgW;
-      outCanvas.height = imgH;
-      const oCtx = outCanvas.getContext('2d');
-
-      // Map back: stage coords -> product image coords
-      const prodX = item.x * scale;
-      const prodY = item.y * scale;
-      const prodW = baseW * item.imgScale * scale;
-      const prodH = baseH * item.imgScale * scale;
-
-      // Draw the cleaned region back onto original product
-      oCtx.drawImage(productImg, 0, 0, imgW, imgH);
-
-      // Overlay the cleaned pixels from workCanvas
-      // Create a temp canvas with just the product area from workCanvas
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = imgW;
-      tempCanvas.height = imgH;
-      const tCtx = tempCanvas.getContext('2d');
-      tCtx.drawImage(workCanvas, prodX, prodY, prodW, prodH, 0, 0, imgW, imgH);
-
-      // Only replace pixels that were brushed
-      const origData = oCtx.getImageData(0, 0, imgW, imgH);
-      const cleanData = tCtx.getImageData(0, 0, imgW, imgH);
-      const origPx = origData.data;
-      const cleanPx = cleanData.data;
-
-      for (let py = 0; py < imgH; py++) {
-        for (let px = 0; px < imgW; px++) {
-          // Map back to erase canvas to check if brushed
-          const ex = Math.round(prodX + (px / imgW) * prodW);
-          const ey = Math.round(prodY + (py / imgH) * prodH);
-          if (ex < 0 || ey < 0 || ex >= ew || ey >= eh) continue;
-          const eIdx = (ey * ew + ex) * 4;
-          if (eraseData.data[eIdx + 3] > 10) {
-            const oi = (py * imgW + px) * 4;
-            origPx[oi] = cleanPx[oi];
-            origPx[oi + 1] = cleanPx[oi + 1];
-            origPx[oi + 2] = cleanPx[oi + 2];
-            // Keep original alpha
-          }
-        }
-      }
-
-      oCtx.putImageData(origData, 0, 0);
-
-      const newSrc = outCanvas.toDataURL('image/png');
-      const newImg = new Image();
-      newImg.onload = () => {
-        productImg.src = newSrc;
-        item.originalDataUrl = newSrc;
-        item.img = newImg;
-        item.originalImg = newImg;
-        // Clear erase canvas
-        eCtx.clearRect(0, 0, ew, eh);
-      };
-      newImg.src = newSrc;
     }
 
     // ── Sharpen image via convolution ──
@@ -3093,7 +2818,6 @@
 
       // Go to processing screen with fetched images
       lookupScreen.style.display = 'none';
-      photosFromLookup = true;
       processImages();
     });
 
@@ -3103,7 +2827,7 @@
     }
 
     shutterBtn.addEventListener('click', capturePhoto);
-    nextBtn.addEventListener('click', () => { photosFromLookup = false; processImages(); });
+    nextBtn.addEventListener('click', () => { processImages(); });
     backBtn.addEventListener('click', goBack);
   </script>
 </body>
