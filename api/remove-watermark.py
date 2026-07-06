@@ -66,6 +66,7 @@ class handler(BaseHTTPRequestHandler):
                     "Content-Type": "application/json",
                     "x-api-key": ANTHROPIC_API_KEY,
                     "anthropic-version": "2023-06-01",
+                    "anthropic-beta": "image-generation-2025-04-14",
                 },
                 method="POST",
             )
