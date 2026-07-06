@@ -15,7 +15,7 @@ LAMA_VERSION = "cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72
 def detect_watermark(b64data, media_type, second_pass=False):
     """Use Claude Haiku to detect watermark regions."""
     api_body = json.dumps({
-        "model": "claude-sonnet-4-6-20250725",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 500,
         "messages": [
             {
