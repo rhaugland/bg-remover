@@ -4,8 +4,168 @@ import os
 import base64
 import urllib.request
 import urllib.error
+import time
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "")
+
+LAMA_VERSION = "cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72"
+
+
+def detect_watermark(b64data, media_type):
+    """Use Claude Haiku to detect watermark regions."""
+    api_body = json.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 300,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": b64data,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, or semi-transparent text/graphic overlaid on the product? If yes, return JSON with ALL watermark regions as an array. Be GENEROUS with the bounding boxes - make them 30% larger than the visible watermark to ensure full coverage. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. Include every part of the watermark. If no watermark found, return {"found": false}. Return ONLY JSON.',
+                    },
+                ],
+            }
+        ],
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=api_body,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        result = json.loads(resp.read())
+
+    text = result["content"][0]["text"].strip()
+    if "{" in text:
+        json_str = text[text.index("{"):text.rindex("}") + 1]
+        return json.loads(json_str)
+    return {"found": False}
+
+
+def create_mask_png(width, height, regions):
+    """Create a black/white PNG mask using pure Python (no Pillow).
+    White (255) = areas to inpaint, Black (0) = areas to keep."""
+    import struct
+    import zlib
+
+    # Create pixel data - all black initially
+    pixels = bytearray(width * height)
+
+    for region in regions:
+        rx = int(region["x"] / 100 * width)
+        ry = int(region["y"] / 100 * height)
+        rw = int(region["w"] / 100 * width)
+        rh = int(region["h"] / 100 * height)
+
+        # Clamp
+        rx = max(0, rx)
+        ry = max(0, ry)
+        rw = min(rw, width - rx)
+        rh = min(rh, height - ry)
+
+        for y in range(ry, ry + rh):
+            for x in range(rx, rx + rw):
+                pixels[y * width + x] = 255
+
+    # Build PNG
+    def make_chunk(chunk_type, data):
+        c = chunk_type + data
+        crc = struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+        return struct.pack(">I", len(data)) + c + crc
+
+    signature = b"\x89PNG\r\n\x1a\n"
+    ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+    ihdr = make_chunk(b"IHDR", ihdr_data)
+
+    # Build raw image data with filter bytes
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)  # filter: none
+        raw.extend(pixels[y * width:(y + 1) * width])
+
+    compressed = zlib.compress(bytes(raw), 9)
+    idat = make_chunk(b"IDAT", compressed)
+    iend = make_chunk(b"IEND", b"")
+
+    return signature + ihdr + idat + iend
+
+
+def run_lama(image_data_url, mask_b64):
+    """Send image + mask to Replicate LAMA for inpainting."""
+    mask_data_url = f"data:image/png;base64,{mask_b64}"
+
+    # Create prediction
+    body = json.dumps({
+        "version": LAMA_VERSION,
+        "input": {
+            "image": image_data_url,
+            "mask": mask_data_url,
+        },
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://api.replicate.com/v1/predictions",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {REPLICATE_API_TOKEN}",
+            "Content-Type": "application/json",
+            "Prefer": "wait",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        result = json.loads(resp.read())
+
+    # If status is succeeded, output is the URL
+    if result.get("status") == "succeeded":
+        output_url = result.get("output")
+        if isinstance(output_url, list):
+            output_url = output_url[0]
+        return output_url
+
+    # If still processing, poll
+    poll_url = result.get("urls", {}).get("get")
+    if not poll_url:
+        raise ValueError(f"No poll URL. Status: {result.get('status')}, Error: {result.get('error')}")
+
+    for _ in range(30):
+        time.sleep(2)
+        poll_req = urllib.request.Request(
+            poll_url,
+            headers={
+                "Authorization": f"Bearer {REPLICATE_API_TOKEN}",
+            },
+        )
+        with urllib.request.urlopen(poll_req, timeout=10) as resp:
+            result = json.loads(resp.read())
+
+        if result["status"] == "succeeded":
+            output_url = result.get("output")
+            if isinstance(output_url, list):
+                output_url = output_url[0]
+            return output_url
+        elif result["status"] == "failed":
+            raise ValueError(f"LAMA failed: {result.get('error')}")
+
+    raise ValueError("LAMA timed out")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -13,6 +173,8 @@ class handler(BaseHTTPRequestHandler):
         try:
             if not ANTHROPIC_API_KEY:
                 raise ValueError("ANTHROPIC_API_KEY not configured")
+            if not REPLICATE_API_TOKEN:
+                raise ValueError("REPLICATE_API_TOKEN not configured - get one at replicate.com/account/api-tokens")
 
             content_length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(content_length))
@@ -35,59 +197,70 @@ class handler(BaseHTTPRequestHandler):
                 b64data = image_data_url
                 media_type = "image/jpeg"
 
-            api_body = json.dumps({
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 4096,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": b64data,
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": "This product image has a watermark/logo overlay on it. Please regenerate this exact same image but with the watermark completely removed. Keep the product exactly the same - same angle, same colors, same details. Only remove the watermark/logo overlay. Output just the cleaned image.",
-                            },
-                        ],
-                    }
-                ],
-            }).encode()
+            # Step 1: Detect watermark with Claude Haiku
+            detection = detect_watermark(b64data, media_type)
 
-            req = urllib.request.Request(
-                "https://api.anthropic.com/v1/messages",
-                data=api_body,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "anthropic-beta": "image-generation-2025-04-14",
-                },
-                method="POST",
-            )
+            if not detection.get("found"):
+                # No watermark detected, return original
+                response = json.dumps({"image": image_data_url, "detection": "none"})
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response.encode())
+                return
 
-            with urllib.request.urlopen(req, timeout=55) as resp:
-                result = json.loads(resp.read())
+            # Step 2: Get image dimensions from the base64 data
+            image_bytes = base64.b64decode(b64data)
 
-            # Find the image block in the response
-            image_result = None
-            for block in result.get("content", []):
-                if block.get("type") == "image":
-                    source = block.get("source", {})
-                    img_b64 = source.get("data", "")
-                    img_mime = source.get("media_type", "image/png")
-                    image_result = f"data:{img_mime};base64,{img_b64}"
-                    break
+            # Parse dimensions from image header
+            width, height = 0, 0
+            if media_type == "image/png":
+                import struct
+                width = struct.unpack(">I", image_bytes[16:20])[0]
+                height = struct.unpack(">I", image_bytes[20:24])[0]
+            elif media_type == "image/jpeg":
+                # Parse JPEG for dimensions
+                i = 2
+                while i < len(image_bytes) - 1:
+                    if image_bytes[i] != 0xFF:
+                        break
+                    marker = image_bytes[i + 1]
+                    if marker in (0xC0, 0xC2):
+                        height = (image_bytes[i + 5] << 8) | image_bytes[i + 6]
+                        width = (image_bytes[i + 7] << 8) | image_bytes[i + 8]
+                        break
+                    elif marker == 0xD9:
+                        break
+                    else:
+                        seg_len = (image_bytes[i + 2] << 8) | image_bytes[i + 3]
+                        i += 2 + seg_len
+                else:
+                    width, height = 800, 600
+            else:
+                width, height = 800, 600
 
-            if not image_result:
-                raise ValueError("Claude did not return an image. Response: " + json.dumps(result.get("content", [])[:1]))
+            if width == 0 or height == 0:
+                width, height = 800, 600
 
-            response = json.dumps({"image": image_result})
+            # Step 3: Create mask PNG
+            regions = detection.get("regions", [])
+            mask_png = create_mask_png(width, height, regions)
+            mask_b64 = base64.b64encode(mask_png).decode()
+
+            # Step 4: Run LAMA inpainting
+            output_url = run_lama(image_data_url, mask_b64)
+
+            # Step 5: Download the result and convert to data URL
+            dl_req = urllib.request.Request(output_url)
+            with urllib.request.urlopen(dl_req, timeout=15) as resp:
+                result_bytes = resp.read()
+                content_type = resp.headers.get("Content-Type", "image/png")
+
+            result_b64 = base64.b64encode(result_bytes).decode()
+            result_data_url = f"data:{content_type};base64,{result_b64}"
+
+            response = json.dumps({"image": result_data_url, "detection": "removed"})
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(response)))
@@ -96,7 +269,7 @@ class handler(BaseHTTPRequestHandler):
 
         except urllib.error.HTTPError as e:
             err_body = e.read().decode()
-            error = json.dumps({"error": f"Claude API error {e.code}: {err_body}"})
+            error = json.dumps({"error": f"API error {e.code}: {err_body}"})
             self.send_response(502)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(error)))
