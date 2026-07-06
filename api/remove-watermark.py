@@ -31,7 +31,7 @@ def detect_watermark(b64data, media_type, second_pass=False):
                     },
                     {
                         "type": "text",
-                        "text": 'Look at this product image carefully. Is there a faint watermark remnant, ghost image, logo trace, faint wing shape, or any semi-transparent artifact? Look for very subtle discoloration. If yes, return MULTIPLE tight bounding boxes for each trace. Use percentages: {"found": true, "regions": [{"x": pct_left, "y": pct_top, "w": pct_width, "h": pct_height}]}. Keep boxes tight to just the artifact. If clean, return {"found": false}. Return ONLY JSON.' if second_pass else 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent graphic overlaid on the product? If yes, return MULTIPLE separate bounding boxes - one for each distinct part (e.g. left wing, right wing, center logo, text below). Each box should TIGHTLY fit just that part of the watermark with minimal extra space. Do NOT use one giant box. Do NOT include areas that are just the product surface. Use percentages of image dimensions: {"found": true, "regions": [{"x": pct_left, "y": pct_top, "w": pct_width, "h": pct_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.',
+                        "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent graphic overlaid on the product? The watermark is typically an eagle with WIDE spread wings and "AMI" text. If found, return MULTIPLE separate bounding boxes: one for the LEFT WING (include the full wing tip extending far left), one for the RIGHT WING (include the full wing tip extending far right), one for the CENTER BODY/LOGO, and one for any TEXT. The wing boxes are critical - eagle wings spread VERY WIDE so make sure each wing box extends all the way to the faintest tip. Use percentages of image dimensions: {"found": true, "regions": [{"x": pct_left, "y": pct_top, "w": pct_width, "h": pct_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.',
                     },
                 ],
             }
@@ -59,7 +59,7 @@ def detect_watermark(b64data, media_type, second_pass=False):
     return {"found": False}
 
 
-def create_mask_png(width, height, regions, pad_pct=0.1):
+def create_mask_png(width, height, regions, pad_pct=0.2):
     """Create a black/white PNG mask using pure Python (no Pillow).
     White (255) = areas to inpaint, Black (0) = areas to keep."""
     import struct
@@ -266,19 +266,6 @@ class handler(BaseHTTPRequestHandler):
 
             result_b64 = base64.b64encode(result_bytes).decode()
             result_data_url = f"data:{content_type};base64,{result_b64}"
-
-            # Step 6: Second pass - reuse same regions with wider padding to catch remnants
-            mask_png2 = create_mask_png(width, height, regions, pad_pct=0.3)
-            mask_b64_2 = base64.b64encode(mask_png2).decode()
-            output_url2 = run_lama(result_data_url, mask_b64_2)
-
-            dl_req2 = urllib.request.Request(output_url2)
-            with urllib.request.urlopen(dl_req2, timeout=15) as resp2:
-                result_bytes2 = resp2.read()
-                content_type2 = resp2.headers.get("Content-Type", "image/png")
-
-            result_b64 = base64.b64encode(result_bytes2).decode()
-            result_data_url = f"data:{content_type2};base64,{result_b64}"
 
             response = json.dumps({"image": result_data_url, "detection": "removed"})
             self.send_response(200)
