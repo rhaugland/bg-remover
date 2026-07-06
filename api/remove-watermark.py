@@ -74,9 +74,9 @@ def create_mask_png(width, height, regions):
         rw = int(region["w"] / 100 * width)
         rh = int(region["h"] / 100 * height)
 
-        # Expand by 25% on each side for safety
-        pad_w = int(rw * 0.25)
-        pad_h = int(rh * 0.25)
+        # Expand more horizontally (wings spread wide) than vertically
+        pad_w = int(rw * 0.4)
+        pad_h = int(rh * 0.2)
         rx = rx - pad_w
         ry = ry - pad_h
         rw = rw + pad_w * 2
