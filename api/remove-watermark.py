@@ -12,7 +12,7 @@ REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "")
 LAMA_VERSION = "cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72"
 
 
-def detect_watermark(b64data, media_type):
+def detect_watermark(b64data, media_type, second_pass=False):
     """Use Claude Haiku to detect watermark regions."""
     api_body = json.dumps({
         "model": "claude-haiku-4-5-20251001",
@@ -31,7 +31,7 @@ def detect_watermark(b64data, media_type):
                     },
                     {
                         "type": "text",
-                        "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent text/graphic overlaid on the product? If yes, return JSON with a SINGLE bounding box that tightly covers the ENTIRE watermark including all wings, text, and decorative elements. The bounding box should fit snugly around the watermark with just a small margin. Do NOT make it so large that it covers the product itself. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.',
+                        "text": 'Look at this product image carefully. Is there a faint watermark, ghost image, logo remnant, eagle wings, "AMI" text, or any semi-transparent overlay on the product? Look especially for very faint or partially removed watermarks. If yes, return JSON with a SINGLE bounding box covering the ENTIRE affected area. The box should fit snugly around all traces with a small margin. Do NOT make it so large that it covers the actual product edges. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.' if second_pass else 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent text/graphic overlaid on the product? If yes, return JSON with a SINGLE bounding box that tightly covers the ENTIRE watermark including all wings, text, and decorative elements. The bounding box should fit snugly around the watermark with just a small margin. Do NOT make it so large that it covers the product itself. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.',
                     },
                 ],
             }
@@ -74,9 +74,9 @@ def create_mask_png(width, height, regions):
         rw = int(region["w"] / 100 * width)
         rh = int(region["h"] / 100 * height)
 
-        # Expand by 15% on each side for safety
-        pad_w = int(rw * 0.15)
-        pad_h = int(rh * 0.15)
+        # Expand by 25% on each side for safety
+        pad_w = int(rw * 0.25)
+        pad_h = int(rh * 0.25)
         rx = rx - pad_w
         ry = ry - pad_h
         rw = rw + pad_w * 2
@@ -269,7 +269,7 @@ class handler(BaseHTTPRequestHandler):
             result_data_url = f"data:{content_type};base64,{result_b64}"
 
             # Step 6: Second pass - check if any watermark remnants remain
-            detection2 = detect_watermark(result_b64, content_type)
+            detection2 = detect_watermark(result_b64, content_type, second_pass=True)
             if detection2.get("found"):
                 regions2 = detection2.get("regions", [])
                 mask_png2 = create_mask_png(width, height, regions2)
