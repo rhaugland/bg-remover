@@ -267,21 +267,18 @@ class handler(BaseHTTPRequestHandler):
             result_b64 = base64.b64encode(result_bytes).decode()
             result_data_url = f"data:{content_type};base64,{result_b64}"
 
-            # Step 6: Second pass - check if any watermark remnants remain
-            detection2 = detect_watermark(result_b64, content_type, second_pass=True)
-            if detection2.get("found"):
-                regions2 = detection2.get("regions", [])
-                mask_png2 = create_mask_png(width, height, regions2, pad_pct=0.25)
-                mask_b64_2 = base64.b64encode(mask_png2).decode()
-                output_url2 = run_lama(result_data_url, mask_b64_2)
+            # Step 6: Second pass - reuse same regions with wider padding to catch remnants
+            mask_png2 = create_mask_png(width, height, regions, pad_pct=0.3)
+            mask_b64_2 = base64.b64encode(mask_png2).decode()
+            output_url2 = run_lama(result_data_url, mask_b64_2)
 
-                dl_req2 = urllib.request.Request(output_url2)
-                with urllib.request.urlopen(dl_req2, timeout=15) as resp2:
-                    result_bytes2 = resp2.read()
-                    content_type2 = resp2.headers.get("Content-Type", "image/png")
+            dl_req2 = urllib.request.Request(output_url2)
+            with urllib.request.urlopen(dl_req2, timeout=15) as resp2:
+                result_bytes2 = resp2.read()
+                content_type2 = resp2.headers.get("Content-Type", "image/png")
 
-                result_b64 = base64.b64encode(result_bytes2).decode()
-                result_data_url = f"data:{content_type2};base64,{result_b64}"
+            result_b64 = base64.b64encode(result_bytes2).decode()
+            result_data_url = f"data:{content_type2};base64,{result_b64}"
 
             response = json.dumps({"image": result_data_url, "detection": "removed"})
             self.send_response(200)
