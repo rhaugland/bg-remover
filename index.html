@@ -1797,7 +1797,7 @@
           const prog = spinnerEl.querySelector('.progress-text');
           let imageToProcess = dataUrl;
 
-          // Try to remove vendor watermark via Claude vision
+          // Try to remove vendor watermark via Claude image generation
           if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
           try {
             const wmResp = await fetch('/api/remove-watermark', {
@@ -1805,14 +1805,19 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ image: imageToProcess }),
             });
-            if (wmResp.ok) {
-              const wmData = await wmResp.json();
-              if (wmData.image) {
-                imageToProcess = wmData.image;
-              }
+            const wmData = await wmResp.json();
+            if (wmResp.ok && wmData.image) {
+              imageToProcess = wmData.image;
+              if (prog) prog.textContent = `Watermark removed! Continuing...`;
+            } else {
+              console.warn('Watermark removal failed:', wmData.error || wmResp.status);
+              if (prog) prog.textContent = `Watermark removal failed (${wmData.error || wmResp.status}), continuing...`;
+              await new Promise(r => setTimeout(r, 1500));
             }
           } catch (wmErr) {
-            console.warn('Watermark removal skipped:', wmErr);
+            console.warn('Watermark removal error:', wmErr);
+            if (prog) prog.textContent = `Watermark removal error, continuing...`;
+            await new Promise(r => setTimeout(r, 1500));
           }
 
           if (prog) prog.textContent = `Removing background ${i + 1}/${photos.length}...`;
