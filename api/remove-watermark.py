@@ -31,7 +31,7 @@ def detect_watermark(b64data, media_type):
                     },
                     {
                         "type": "text",
-                        "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent text/graphic overlaid on the product? If yes, return JSON with ALL watermark regions as a SINGLE bounding box that covers the ENTIRE watermark including all wings, text, and decorative elements. Make the bounding box 50% LARGER than the visible watermark on all sides to ensure absolutely nothing remains. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. Err on the side of too large rather than too small. If no watermark found, return {"found": false}. Return ONLY JSON.',
+                        "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent text/graphic overlaid on the product? If yes, return JSON with a SINGLE bounding box that tightly covers the ENTIRE watermark including all wings, text, and decorative elements. The bounding box should fit snugly around the watermark with just a small margin. Do NOT make it so large that it covers the product itself. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.',
                     },
                 ],
             }
@@ -74,9 +74,9 @@ def create_mask_png(width, height, regions):
         rw = int(region["w"] / 100 * width)
         rh = int(region["h"] / 100 * height)
 
-        # Expand by 50% on each side for safety
-        pad_w = int(rw * 0.5)
-        pad_h = int(rh * 0.5)
+        # Expand by 15% on each side for safety
+        pad_w = int(rw * 0.15)
+        pad_h = int(rh * 0.15)
         rx = rx - pad_w
         ry = ry - pad_h
         rw = rw + pad_w * 2
