@@ -31,7 +31,7 @@ def detect_watermark(b64data, media_type):
                     },
                     {
                         "type": "text",
-                        "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, or semi-transparent text/graphic overlaid on the product? If yes, return JSON with ALL watermark regions as an array. Be GENEROUS with the bounding boxes - make them 30% larger than the visible watermark to ensure full coverage. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. Include every part of the watermark. If no watermark found, return {"found": false}. Return ONLY JSON.',
+                        "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent text/graphic overlaid on the product? If yes, return JSON with ALL watermark regions as a SINGLE bounding box that covers the ENTIRE watermark including all wings, text, and decorative elements. Make the bounding box 50% LARGER than the visible watermark on all sides to ensure absolutely nothing remains. Use percentages of image dimensions: {"found": true, "regions": [{"x": percent_from_left, "y": percent_from_top, "w": percent_width, "h": percent_height}]}. Err on the side of too large rather than too small. If no watermark found, return {"found": false}. Return ONLY JSON.',
                     },
                 ],
             }
@@ -73,6 +73,14 @@ def create_mask_png(width, height, regions):
         ry = int(region["y"] / 100 * height)
         rw = int(region["w"] / 100 * width)
         rh = int(region["h"] / 100 * height)
+
+        # Expand by 50% on each side for safety
+        pad_w = int(rw * 0.5)
+        pad_h = int(rh * 0.5)
+        rx = rx - pad_w
+        ry = ry - pad_h
+        rw = rw + pad_w * 2
+        rh = rh + pad_h * 2
 
         # Clamp
         rx = max(0, rx)
@@ -259,6 +267,22 @@ class handler(BaseHTTPRequestHandler):
 
             result_b64 = base64.b64encode(result_bytes).decode()
             result_data_url = f"data:{content_type};base64,{result_b64}"
+
+            # Step 6: Second pass - check if any watermark remnants remain
+            detection2 = detect_watermark(result_b64, content_type)
+            if detection2.get("found"):
+                regions2 = detection2.get("regions", [])
+                mask_png2 = create_mask_png(width, height, regions2)
+                mask_b64_2 = base64.b64encode(mask_png2).decode()
+                output_url2 = run_lama(result_data_url, mask_b64_2)
+
+                dl_req2 = urllib.request.Request(output_url2)
+                with urllib.request.urlopen(dl_req2, timeout=15) as resp2:
+                    result_bytes2 = resp2.read()
+                    content_type2 = resp2.headers.get("Content-Type", "image/png")
+
+                result_b64 = base64.b64encode(result_bytes2).decode()
+                result_data_url = f"data:{content_type2};base64,{result_b64}"
 
             response = json.dumps({"image": result_data_url, "detection": "removed"})
             self.send_response(200)
