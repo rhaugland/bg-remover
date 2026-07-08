@@ -59,6 +59,53 @@ def detect_watermark(b64data, media_type, second_pass=False):
     return {"found": False}
 
 
+def detect_watermark_simple(b64data, media_type):
+    """Fallback detection with a very direct prompt."""
+    api_body = json.dumps({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 500,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": b64data,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": 'This product image likely has a semi-transparent watermark overlaid on it. Look very carefully for ANY faint logo, text, eagle, wings, or brand mark anywhere on the image - especially in the bottom half. Even if it is very faint or hard to see, report it. Return the bounding box as percentages: {"found": true, "regions": [{"x": pct_left, "y": pct_top, "w": pct_width, "h": pct_height}]}. If truly nothing, return {"found": false}. ONLY JSON.',
+                    },
+                ],
+            }
+        ],
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=api_body,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+        },
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        result = json.loads(resp.read())
+
+    text = result["content"][0]["text"].strip()
+    if "{" in text:
+        json_str = text[text.index("{"):text.rindex("}") + 1]
+        return json.loads(json_str)
+    return {"found": False}
+
+
 def create_mask_png(width, height, regions, pad_pct=0.15):
     """Create a black/white PNG mask using pure Python (no Pillow).
     White (255) = areas to inpaint, Black (0) = areas to keep."""
@@ -204,8 +251,12 @@ class handler(BaseHTTPRequestHandler):
                 b64data = image_data_url
                 media_type = "image/jpeg"
 
-            # Step 1: Detect watermark with Claude Haiku
+            # Step 1: Detect watermark with Claude Sonnet
             detection = detect_watermark(b64data, media_type)
+
+            # If first detection misses, retry with simpler prompt
+            if not detection.get("found"):
+                detection = detect_watermark_simple(b64data, media_type)
 
             if not detection.get("found"):
                 # No watermark detected, return original
