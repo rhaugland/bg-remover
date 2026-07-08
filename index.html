@@ -1808,6 +1808,7 @@
             const wmData = await wmResp.json();
             if (wmResp.ok && wmData.image) {
               imageToProcess = wmData.image;
+              console.log('Watermark detection result:', JSON.stringify(wmData.detection), 'Dimensions:', JSON.stringify(wmData.dimensions));
               if (prog) prog.textContent = `Watermark removed! Continuing...`;
             } else {
               console.warn('Watermark removal failed:', wmData.error || wmResp.status);

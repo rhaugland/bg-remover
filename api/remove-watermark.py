@@ -31,7 +31,7 @@ def detect_watermark(b64data, media_type, second_pass=False):
                     },
                     {
                         "type": "text",
-                        "text": 'Look at this product image carefully. Is there a watermark, logo overlay, brand stamp, eagle, wings, "AMI", or any semi-transparent graphic overlaid on the product? The watermark is typically an eagle with WIDE spread wings and "AMI" text. If found, return MULTIPLE separate bounding boxes: one for the LEFT WING (include the full wing tip extending far left), one for the RIGHT WING (include the full wing tip extending far right), one for the CENTER BODY/LOGO, and one for any TEXT. The wing boxes are critical - eagle wings spread VERY WIDE so make sure each wing box extends all the way to the faintest tip. Use percentages of image dimensions: {"found": true, "regions": [{"x": pct_left, "y": pct_top, "w": pct_width, "h": pct_height}]}. If no watermark found, return {"found": false}. Return ONLY JSON.',
+                        "text": 'Is there a watermark on this product image? Look for any semi-transparent logo, eagle, wings, text like "AMI", or brand overlay. If found, return a single bounding box that covers the ENTIRE watermark generously. Make the box 20% larger than the visible watermark on all sides. Use percentages of image dimensions: {"found": true, "regions": [{"x": pct_from_left, "y": pct_from_top, "w": pct_width, "h": pct_height}]}. If no watermark, return {"found": false}. ONLY return JSON, no other text.',
                     },
                 ],
             }
@@ -267,7 +267,7 @@ class handler(BaseHTTPRequestHandler):
             result_b64 = base64.b64encode(result_bytes).decode()
             result_data_url = f"data:{content_type};base64,{result_b64}"
 
-            response = json.dumps({"image": result_data_url, "detection": "removed"})
+            response = json.dumps({"image": result_data_url, "detection": detection, "dimensions": {"w": width, "h": height}})
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(response)))
