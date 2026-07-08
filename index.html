@@ -1808,7 +1808,12 @@
             const wmData = await wmResp.json();
             if (wmResp.ok && wmData.image) {
               imageToProcess = wmData.image;
-              console.log('Watermark detection result:', JSON.stringify(wmData.detection), 'Dimensions:', JSON.stringify(wmData.dimensions));
+              const det = wmData.detection;
+              if (prog) {
+                const info = det && det.found ? det.regions.map(r => `x:${r.x} y:${r.y} w:${r.w} h:${r.h}`).join(' | ') : 'none detected';
+                prog.textContent = `Detection: ${info} (${wmData.dimensions?.w}x${wmData.dimensions?.h})`;
+              }
+              await new Promise(r => setTimeout(r, 3000));
               if (prog) prog.textContent = `Watermark removed! Continuing...`;
             } else {
               console.warn('Watermark removal failed:', wmData.error || wmResp.status);
