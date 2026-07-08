@@ -255,17 +255,28 @@ class handler(BaseHTTPRequestHandler):
             mask_png = create_mask_png(width, height, regions)
             mask_b64 = base64.b64encode(mask_png).decode()
 
-            # Step 4: Run LAMA inpainting
+            # Step 4: Run LAMA inpainting - two passes with same mask
             output_url = run_lama(image_data_url, mask_b64)
 
-            # Step 5: Download the result and convert to data URL
+            # Download first pass result
             dl_req = urllib.request.Request(output_url)
             with urllib.request.urlopen(dl_req, timeout=15) as resp:
                 result_bytes = resp.read()
                 content_type = resp.headers.get("Content-Type", "image/png")
 
             result_b64 = base64.b64encode(result_bytes).decode()
-            result_data_url = f"data:{content_type};base64,{result_b64}"
+            pass1_data_url = f"data:{content_type};base64,{result_b64}"
+
+            # Step 5: Second LAMA pass on same mask to clean remnants
+            output_url2 = run_lama(pass1_data_url, mask_b64)
+
+            dl_req2 = urllib.request.Request(output_url2)
+            with urllib.request.urlopen(dl_req2, timeout=15) as resp2:
+                result_bytes2 = resp2.read()
+                content_type2 = resp2.headers.get("Content-Type", "image/png")
+
+            result_b64 = base64.b64encode(result_bytes2).decode()
+            result_data_url = f"data:{content_type2};base64,{result_b64}"
 
             response = json.dumps({"image": result_data_url, "detection": detection, "dimensions": {"w": width, "h": height}})
             self.send_response(200)
