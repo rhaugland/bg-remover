@@ -31,7 +31,7 @@ def detect_watermark(b64data, media_type, second_pass=False):
                     },
                     {
                         "type": "text",
-                        "text": 'Is there a watermark on this product image? Look for any semi-transparent logo, eagle, wings, text like "AMI", or brand overlay. If found, return a single bounding box that covers the ENTIRE watermark including all wing tips. Make the box slightly larger than the visible watermark. IMPORTANT: do NOT let the box extend past the edges of the actual product - keep it within the product boundaries. Use percentages of image dimensions: {"found": true, "regions": [{"x": pct_from_left, "y": pct_from_top, "w": pct_width, "h": pct_height}]}. If no watermark, return {"found": false}. ONLY return JSON, no other text.',
+                        "text": 'Is there a watermark on this product image? Look for any semi-transparent logo, eagle, wings, text like "AMI" or "AMERIHOOD", or brand overlay. If found, return MULTIPLE separate tight bounding boxes - one for each distinct part (left wing, right wing, center body/eagle, text). Each box should tightly fit just that part. Keep boxes within the product boundaries. Use percentages of image dimensions: {"found": true, "regions": [{"x": pct_from_left, "y": pct_from_top, "w": pct_width, "h": pct_height}]}. If no watermark, return {"found": false}. ONLY return JSON, no other text.',
                     },
                 ],
             }
@@ -59,7 +59,7 @@ def detect_watermark(b64data, media_type, second_pass=False):
     return {"found": False}
 
 
-def create_mask_png(width, height, regions, pad_pct=0.1):
+def create_mask_png(width, height, regions, pad_pct=0.15):
     """Create a black/white PNG mask using pure Python (no Pillow).
     White (255) = areas to inpaint, Black (0) = areas to keep."""
     import struct
