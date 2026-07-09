@@ -1,0 +1,2845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>BG Remover</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+      background: #000;
+      color: #fff;
+      min-height: 100dvh;
+      width: 100vw;
+      overflow: hidden;
+    }
+
+    body.scrollable {
+      overflow: auto;
+      position: static;
+    }
+
+    /* ── Home Screen ── */
+    #home-screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 40px 24px;
+      background: #000;
+      z-index: 5;
+    }
+
+    .home-title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .home-subtitle {
+      font-size: 14px;
+      color: rgba(255,255,255,0.35);
+      margin-top: -20px;
+      margin-bottom: 16px;
+    }
+
+    .home-btn {
+      width: 100%;
+      max-width: 320px;
+      padding: 20px 24px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      background: #111;
+      color: #fff;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .home-btn:active {
+      background: #1a1a1a;
+      border-color: rgba(255,255,255,0.25);
+    }
+
+    .home-btn-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    .home-btn-text {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .home-btn-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .home-btn-desc {
+      font-size: 12px;
+      color: rgba(255,255,255,0.35);
+      line-height: 1.3;
+    }
+
+    /* ── Camera Screen ── */
+    #camera-screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+    }
+
+    /* Viewfinder fills entire screen */
+    #viewfinder {
+      position: absolute;
+      inset: 0;
+      background: #000;
+      z-index: 0;
+    }
+
+    #viewfinder video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Top bar overlay */
+    #top-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: env(safe-area-inset-top, 12px) 20px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%);
+      padding-top: max(env(safe-area-inset-top, 12px), 16px);
+    }
+
+    #app-title {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.8);
+    }
+
+    #photo-count {
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    /* Bottom controls overlay */
+    #bottom-controls {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
+      padding-bottom: max(env(safe-area-inset-bottom, 20px), 24px);
+    }
+
+    /* Thumbnail strip */
+    #thumbnail-strip {
+      display: flex;
+      gap: 10px;
+      padding: 0 20px 20px;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+      transition: min-height 0.3s, padding 0.3s, opacity 0.3s;
+    }
+
+    #thumbnail-strip::-webkit-scrollbar { display: none; }
+
+    #thumbnail-strip.has-photos {
+      min-height: 64px;
+      padding: 12px 20px 20px;
+    }
+
+    .thumb-wrapper {
+      position: relative;
+      flex-shrink: 0;
+      animation: thumb-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes thumb-pop {
+      0% { transform: scale(0); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .thumb {
+      width: 52px;
+      height: 52px;
+      border-radius: 10px;
+      object-fit: cover;
+      border: 2px solid rgba(255,255,255,0.3);
+      display: block;
+    }
+
+    .thumb-remove {
+      position: absolute;
+      top: -7px;
+      right: -7px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(255,60,60,0.9);
+      backdrop-filter: blur(4px);
+      color: #fff;
+      border: 2px solid rgba(0,0,0,0.5);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 18px;
+      text-align: center;
+      cursor: pointer;
+      z-index: 2;
+    }
+
+    /* Zoom slider */
+    #zoom-control {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 0 40px 16px;
+    }
+
+    #zoom-control.visible { display: flex; }
+
+    .zoom-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.5);
+      min-width: 32px;
+      text-align: center;
+    }
+
+    #zoom-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.15);
+      outline: none;
+    }
+
+    #zoom-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    #zoom-slider::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+    }
+
+    /* Shutter area */
+    #shutter-area {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+      position: relative;
+      height: 88px;
+    }
+
+    #shutter-btn {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      border: 4px solid rgba(255,255,255,0.9);
+      background: transparent;
+      cursor: pointer;
+      position: relative;
+      flex-shrink: 0;
+      -webkit-appearance: none;
+      outline: none;
+      transition: transform 0.15s;
+    }
+
+    #shutter-btn::after {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.95);
+      transition: transform 0.1s ease;
+    }
+
+    #shutter-btn:active {
+      transform: scale(0.92);
+    }
+
+    #shutter-btn:active::after {
+      transform: scale(0.85);
+    }
+
+    #shutter-btn:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+    }
+
+    #shutter-btn:disabled:active {
+      transform: none;
+    }
+
+    /* Next button - positioned right of shutter */
+    #next-btn {
+      position: absolute;
+      right: 24px;
+      padding: 12px 24px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 24px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(8px);
+      transition: opacity 0.25s, transform 0.25s;
+      -webkit-appearance: none;
+    }
+
+    #next-btn.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    #next-btn:active {
+      background: rgba(255,255,255,0.8);
+      transform: scale(0.95);
+    }
+
+    /* ── Processing Screen ── */
+    #processing-screen {
+      display: none;
+      flex-direction: column;
+      min-height: 100dvh;
+      background: #000;
+      z-index: 20;
+    }
+
+    #processing-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: max(env(safe-area-inset-top, 12px), 16px) 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0a0a0a;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    #back-btn {
+      padding: 8px 18px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+      transition: background 0.15s;
+    }
+
+    #back-btn:active { background: rgba(255,255,255,0.2); }
+
+    #download-all-btn {
+      padding: 8px 18px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: none;
+      -webkit-appearance: none;
+      transition: background 0.15s;
+    }
+
+    #download-all-btn:active { background: rgba(255,255,255,0.8); }
+
+    #processing-status {
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: 0.3px;
+    }
+
+    #results-grid {
+      padding: 16px;
+      padding-bottom: max(env(safe-area-inset-bottom, 16px), 40px);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .result-card {
+      background: #111;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .drag-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4/3;
+      background: #000;
+      overflow: hidden;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    .drag-stage:active { cursor: grabbing; }
+
+    .drag-stage img {
+      position: absolute;
+      max-width: 80%;
+      max-height: 80%;
+      user-select: none;
+      -webkit-user-select: none;
+      pointer-events: none;
+    }
+
+    .drag-stage .watermark-img {
+      position: absolute;
+      width: 40%;
+      max-width: none;
+      max-height: none;
+      opacity: 0.5;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .drag-mode-toggle {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      z-index: 10;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .drag-mode-toggle.active-watermark {
+      background: rgba(255,140,0,0.7);
+      border-color: rgba(255,140,0,0.9);
+    }
+
+    .drag-hint {
+      position: absolute;
+      bottom: 10px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: rgba(128,128,128,0.6);
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    .drag-stage.dragged .drag-hint { opacity: 0; }
+
+    /* ── Background color picker ── */
+    .bg-picker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .bg-picker-label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      margin-right: 4px;
+      white-space: nowrap;
+    }
+
+    .bg-swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.15);
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+      flex-shrink: 0;
+      -webkit-appearance: none;
+      padding: 0;
+      outline: none;
+    }
+
+    .bg-swatch:active { transform: scale(0.9); }
+
+    .bg-swatch.active {
+      border-color: #fff;
+      border-width: 3px;
+    }
+
+    .bg-custom-input {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.15);
+      cursor: pointer;
+      padding: 0;
+      overflow: hidden;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .bg-custom-input.active {
+      border-color: #fff;
+      border-width: 3px;
+    }
+
+    .bg-custom-input input {
+      position: absolute;
+      inset: -4px;
+      width: 36px;
+      height: 36px;
+      border: none;
+      cursor: pointer;
+      -webkit-appearance: none;
+      padding: 0;
+    }
+
+    /* Sharpness slider */
+    .sharpen-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .sharpen-control label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      white-space: nowrap;
+      min-width: 52px;
+    }
+
+    .sharpen-control input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.15);
+      outline: none;
+    }
+
+    .sharpen-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+
+    .sharpen-control input[type="range"]::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+    }
+
+    .sharpen-value {
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+      font-weight: 600;
+      min-width: 24px;
+      text-align: right;
+    }
+
+    .result-actions {
+      padding: 12px 14px;
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .result-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.4);
+    }
+
+    .result-actions button {
+      padding: 8px 20px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+      transition: background 0.15s;
+    }
+
+    .result-actions button:active {
+      background: rgba(255,255,255,0.2);
+    }
+
+    /* ── Loader ── */
+    .spinner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 20px;
+      gap: 16px;
+      background: #111;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .spinner-ring {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .progress-text {
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      font-weight: 500;
+    }
+
+    /* ── Flash ── */
+    #flash {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    #flash.fire {
+      animation: flash-anim 0.12s ease-out;
+    }
+
+    @keyframes flash-anim {
+      0% { opacity: 0.7; }
+      100% { opacity: 0; }
+    }
+
+    #capture-canvas { display: none; }
+
+    /* ── Continue button on results page ── */
+    #continue-btn {
+      display: none;
+      margin: 8px 16px 24px;
+      padding: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+      letter-spacing: 0.3px;
+    }
+
+    #continue-btn:active { background: rgba(255,255,255,0.85); }
+
+    /* ── Product Form Screen (Wizard) ── */
+    #product-screen {
+      display: none;
+      flex-direction: column;
+      min-height: 100dvh;
+      background: #000;
+      z-index: 25;
+    }
+
+    #product-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: max(env(safe-area-inset-top, 12px), 16px) 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0a0a0a;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    #product-back-btn {
+      padding: 8px 18px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    #product-header-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+    }
+
+    #product-header .spacer { width: 60px; }
+
+    /* Step indicators */
+    .step-dots {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      padding: 16px 0 4px;
+    }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      transition: background 0.2s, width 0.2s;
+    }
+
+    .step-dot.active {
+      background: #fff;
+      width: 24px;
+      border-radius: 4px;
+    }
+
+    .step-dot.done {
+      background: rgba(255,255,255,0.4);
+    }
+
+    /* Wizard step container */
+    .wizard-step {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+      padding: 20px 16px;
+      padding-bottom: max(env(safe-area-inset-bottom, 16px), 40px);
+    }
+
+    .wizard-step.active { display: flex; }
+
+    .step-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .step-subtitle {
+      font-size: 13px;
+      color: rgba(255,255,255,0.3);
+      margin-top: -12px;
+    }
+
+    .wizard-nav {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .wizard-nav button {
+      flex: 1;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+      letter-spacing: 0.3px;
+    }
+
+    .wizard-prev {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+
+    .wizard-prev:active { background: rgba(255,255,255,0.2); }
+
+    .wizard-next {
+      background: #fff;
+      color: #000;
+    }
+
+    .wizard-next:active { background: rgba(255,255,255,0.85); }
+
+    .ai-suggest-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.2px;
+    }
+
+    .ai-suggest-btn:active { transform: scale(0.95); }
+
+    .ai-suggest-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .ai-suggest-btn:disabled:active { transform: none; }
+
+    .ai-suggest-btn .ai-spinner {
+      display: none;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    .ai-suggest-btn.loading .ai-spinner { display: inline-block; }
+    .ai-suggest-btn.loading .ai-label { display: none; }
+
+    .form-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 15px;
+      color: #fff;
+      font-family: inherit;
+      -webkit-appearance: none;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      border-color: rgba(255,255,255,0.3);
+    }
+
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .form-group select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .form-row .form-group { flex: 1; }
+
+    .form-hint {
+      font-size: 11px;
+      color: rgba(255,255,255,0.2);
+      margin-top: 2px;
+    }
+
+    /* Image preview strip in form */
+    .form-images {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 4px 0;
+    }
+
+    .form-images::-webkit-scrollbar { display: none; }
+
+    .form-images img {
+      height: 80px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    #publish-btn {
+      padding: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    /* ── Review Screen ── */
+    #review-screen {
+      display: none;
+      flex-direction: column;
+      min-height: 100dvh;
+      background: #000;
+      z-index: 26;
+    }
+
+    #review-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: max(env(safe-area-inset-top, 12px), 16px) 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0a0a0a;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    #review-back-btn {
+      padding: 8px 18px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    #review-header-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+    }
+
+    #review-content {
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .review-images {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 4px 0;
+    }
+
+    .review-images::-webkit-scrollbar { display: none; }
+
+    .review-images img {
+      height: 120px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .review-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .review-field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .review-field-value {
+      font-size: 15px;
+      color: #fff;
+      line-height: 1.5;
+      cursor: pointer;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .review-field-value:hover {
+      border-color: rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .review-field-value.empty {
+      color: rgba(255,255,255,0.15);
+      font-style: italic;
+    }
+
+    .review-edit-input,
+    .review-edit-textarea {
+      width: 100%;
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 15px;
+      color: #fff;
+      font-family: inherit;
+      outline: none;
+      -webkit-appearance: none;
+      transition: border-color 0.15s;
+    }
+
+    .review-edit-input:focus,
+    .review-edit-textarea:focus {
+      border-color: rgba(255,255,255,0.4);
+    }
+
+    .review-edit-textarea {
+      min-height: 70px;
+      resize: vertical;
+    }
+
+    .review-edit-hint {
+      font-size: 10px;
+      color: rgba(255,255,255,0.15);
+      margin-top: 2px;
+      text-align: right;
+    }
+
+    .review-divider {
+      height: 1px;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .review-row {
+      display: flex;
+      gap: 20px;
+    }
+
+    .review-row .review-field { flex: 1; }
+
+    #review-footer {
+      padding: 16px;
+      padding-bottom: max(env(safe-area-inset-bottom, 16px), 40px);
+    }
+
+    #publish-btn {
+      width: 100%;
+      padding: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+    }
+
+    #publish-btn:active { background: rgba(255,255,255,0.85); }
+    #publish-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+    #publish-btn:disabled:active { background: #fff; }
+
+    #publish-status {
+      text-align: center;
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      min-height: 20px;
+      margin-bottom: 12px;
+    }
+
+    /* ── Part Lookup Screen ── */
+    #lookup-screen {
+      display: none;
+      flex-direction: column;
+      min-height: 100dvh;
+      background: #000;
+      z-index: 20;
+    }
+
+    #lookup-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: max(env(safe-area-inset-top, 12px), 16px) 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0a0a0a;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    #lookup-back-btn {
+      padding: 8px 18px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    #lookup-header-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+    }
+
+    #lookup-header .spacer { width: 60px; }
+
+    .lookup-body {
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .lookup-search-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .lookup-search-row input {
+      flex: 1;
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 16px;
+      color: #fff;
+      font-family: inherit;
+      -webkit-appearance: none;
+      outline: none;
+    }
+
+    .lookup-search-row input:focus {
+      border-color: rgba(255,255,255,0.3);
+    }
+
+    .lookup-search-row input::placeholder {
+      color: rgba(255,255,255,0.25);
+    }
+
+    #lookup-search-btn {
+      padding: 14px 20px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      white-space: nowrap;
+    }
+
+    #lookup-search-btn:active { background: rgba(255,255,255,0.85); }
+    #lookup-search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #lookup-status {
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      min-height: 20px;
+    }
+
+    .lookup-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .lookup-img-card {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+      background: #111;
+    }
+
+    .lookup-img-card:active { transform: scale(0.97); }
+
+    .lookup-img-card.selected {
+      border-color: #fff;
+    }
+
+    .lookup-img-card img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+    }
+
+    .lookup-img-check {
+      display: none;
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      color: #000;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 24px;
+      text-align: center;
+    }
+
+    .lookup-img-card.selected .lookup-img-check { display: block; }
+
+    .lookup-img-source {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 4px 8px;
+      background: rgba(0,0,0,0.7);
+      font-size: 10px;
+      color: rgba(255,255,255,0.5);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #lookup-use-btn {
+      display: none;
+      padding: 16px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-appearance: none;
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    #lookup-use-btn:active { background: rgba(255,255,255,0.85); }
+
+  </style>
+</head>
+<body>
+  <div id="flash"></div>
+  <canvas id="capture-canvas"></canvas>
+
+  <!-- Home Screen -->
+  <div id="home-screen">
+    <div class="home-title">BG Remover</div>
+    <div class="home-subtitle">Product photo studio</div>
+    <button class="home-btn" onclick="goToCamera()">
+      <div class="home-btn-icon">&#128247;</div>
+      <div class="home-btn-text">
+        <span class="home-btn-title">Take Photos</span>
+        <span class="home-btn-desc">Use your camera to capture up to 5 product images</span>
+      </div>
+    </button>
+    <button class="home-btn" onclick="goToLookup()">
+      <div class="home-btn-icon">&#128270;</div>
+      <div class="home-btn-text">
+        <span class="home-btn-title">Search Part Number</span>
+        <span class="home-btn-desc">Find product images from vendor websites</span>
+      </div>
+    </button>
+  </div>
+
+  <!-- Camera Screen -->
+  <div id="camera-screen">
+    <div id="viewfinder">
+      <video id="camera" autoplay playsinline muted></video>
+    </div>
+
+    <div id="top-bar">
+      <span id="app-title">BG Remover</span>
+      <span id="photo-count">0 / 5</span>
+    </div>
+
+    <div id="bottom-controls">
+      <div id="thumbnail-strip"></div>
+      <div id="zoom-control">
+        <span class="zoom-label">1x</span>
+        <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1">
+        <span class="zoom-label" id="zoom-max">5x</span>
+      </div>
+      <div id="shutter-area">
+        <button id="shutter-btn" aria-label="Take photo"></button>
+        <button id="next-btn">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Part Lookup Screen -->
+  <div id="lookup-screen">
+    <div id="lookup-header">
+      <button id="lookup-back-btn">Back</button>
+      <span id="lookup-header-title">Part Lookup</span>
+      <div class="spacer"></div>
+    </div>
+    <div class="lookup-body">
+      <div class="lookup-search-row">
+        <input type="text" id="lookup-input" placeholder="Enter part number..." autocomplete="off" autocapitalize="characters">
+        <button id="lookup-search-btn" onclick="searchPartNumber()">Search</button>
+      </div>
+      <div id="lookup-status"></div>
+      <div class="lookup-grid" id="lookup-grid"></div>
+      <button id="lookup-use-btn">Use Selected Images</button>
+    </div>
+  </div>
+
+  <!-- Processing Screen -->
+  <div id="processing-screen">
+    <div id="processing-header">
+      <button id="back-btn">Back</button>
+      <span id="processing-status"></span>
+      <button id="download-all-btn">Save All</button>
+    </div>
+    <div id="results-grid"></div>
+    <button id="continue-btn">Continue to Product Details</button>
+  </div>
+
+  <!-- Product Form Screen (Wizard) -->
+  <div id="product-screen">
+    <div id="product-header">
+      <button id="product-back-btn">Back</button>
+      <span id="product-header-title">New Product</span>
+      <div class="spacer"></div>
+    </div>
+
+    <div class="step-dots" id="step-dots">
+      <div class="step-dot active"></div>
+      <div class="step-dot"></div>
+      <div class="step-dot"></div>
+      <div class="step-dot"></div>
+    </div>
+
+    <!-- Step 1: Images + Title + Description -->
+    <div class="wizard-step active" data-step="0">
+      <div class="step-title">Product Info</div>
+      <div class="step-subtitle">Name and describe your product</div>
+
+      <div class="form-group">
+        <label>Product Images</label>
+        <div class="form-images" id="form-images"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="f-title" placeholder="Product name">
+      </div>
+
+      <div class="form-group">
+        <div class="form-group-header">
+          <label>Description</label>
+          <button type="button" class="ai-suggest-btn" id="ai-desc-btn" onclick="aiSuggestDescription()">
+            <span class="ai-spinner"></span>
+            <span class="ai-label">AI Suggest</span>
+          </button>
+        </div>
+        <textarea id="f-description" placeholder="Describe your product..."></textarea>
+      </div>
+
+      <div class="wizard-nav">
+        <button type="button" class="wizard-next" onclick="wizardNext()">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Price + Weight -->
+    <div class="wizard-step" data-step="1">
+      <div class="step-title">Pricing</div>
+      <div class="step-subtitle">Set your price and shipping weight</div>
+
+      <div class="form-group">
+        <label>Price</label>
+        <input type="number" id="f-price" placeholder="0.00" step="0.01" min="0">
+      </div>
+
+      <div class="form-group">
+        <label>Weight (lbs)</label>
+        <input type="number" id="f-weight" placeholder="0.0" step="0.1" min="0">
+      </div>
+
+      <div class="wizard-nav">
+        <button type="button" class="wizard-prev" onclick="wizardPrev()">Back</button>
+        <button type="button" class="wizard-next" onclick="wizardNext()">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Category + Collection -->
+    <div class="wizard-step" data-step="2">
+      <div class="step-title">Organization</div>
+      <div class="step-subtitle">Categorize your product</div>
+
+      <div class="form-group">
+        <label>Product Category</label>
+        <select id="f-category">
+          <option value="">Select category...</option>
+          <optgroup label="Truck Parts">
+            <option value="Truck Parts">All Truck Parts</option>
+            <option value="Truck Parts > Bed Accessories">Bed Accessories</option>
+            <option value="Truck Parts > Bed Covers & Tonneau">Bed Covers &amp; Tonneau</option>
+            <option value="Truck Parts > Bed Mats & Liners">Bed Mats &amp; Liners</option>
+            <option value="Truck Parts > Bed Racks">Bed Racks</option>
+            <option value="Truck Parts > Body Parts">Body Parts</option>
+            <option value="Truck Parts > Bumpers & Bull Bars">Bumpers &amp; Bull Bars</option>
+            <option value="Truck Parts > Custom Grills">Custom Grills</option>
+            <option value="Truck Parts > Exhaust">Exhaust</option>
+            <option value="Truck Parts > Fender Flares">Fender Flares</option>
+            <option value="Truck Parts > Floor Mats">Floor Mats &amp; Cargo Liners</option>
+            <option value="Truck Parts > Fuel Tanks">Fuel &amp; Transfer Tanks</option>
+            <option value="Truck Parts > Headlights & Taillights">Headlights &amp; Taillights</option>
+            <option value="Truck Parts > Hitches & Towing">Hitches &amp; Towing</option>
+            <option value="Truck Parts > Hoods">Hoods</option>
+            <option value="Truck Parts > Leveling Kits">Leveling Kits</option>
+            <option value="Truck Parts > Lighting">Lighting &amp; LED</option>
+            <option value="Truck Parts > Mud Flaps">Mud Flaps</option>
+            <option value="Truck Parts > Off-Road Lighting">Off-Road LED Lighting</option>
+            <option value="Truck Parts > Performance">Performance</option>
+            <option value="Truck Parts > Programmers & Chips">Programmers &amp; Chips</option>
+            <option value="Truck Parts > Running Boards">Steps &amp; Running Boards</option>
+            <option value="Truck Parts > Seat Covers">Seat Covers</option>
+            <option value="Truck Parts > Shocks & Struts">Shocks &amp; Struts</option>
+            <option value="Truck Parts > Skid Plates">Skid Plates</option>
+            <option value="Truck Parts > Suspension Lift Kits">Suspension Lift Kits</option>
+            <option value="Truck Parts > Tires">Tires</option>
+            <option value="Truck Parts > Toolboxes">Toolboxes &amp; Bed Storage</option>
+            <option value="Truck Parts > Toppers">Toppers &amp; Truck Caps</option>
+            <option value="Truck Parts > Wheels">Wheels</option>
+            <option value="Truck Parts > Wheel & Tire Packages">Wheel &amp; Tire Packages</option>
+            <option value="Truck Parts > Winch">Winch &amp; Winch Parts</option>
+            <option value="Truck Parts > Window Deflectors">Window &amp; Hood Deflectors</option>
+          </optgroup>
+          <optgroup label="Van Parts">
+            <option value="Van Parts">All Van Parts</option>
+            <option value="Van Parts > Accessories">Accessories</option>
+            <option value="Van Parts > Blinds & Shades">Blinds &amp; Shades</option>
+            <option value="Van Parts > Electronics">Electronics</option>
+            <option value="Van Parts > Flooring & Fabric">Flooring &amp; Fabric</option>
+            <option value="Van Parts > HVAC">HVAC Heat &amp; Air</option>
+            <option value="Van Parts > Interior Lighting">Interior Lighting</option>
+            <option value="Van Parts > Mobility">Mobility</option>
+            <option value="Van Parts > Running Boards">Running Boards</option>
+            <option value="Van Parts > Seat Belts">Seat Belts</option>
+            <option value="Van Parts > Seating">Seating</option>
+            <option value="Van Parts > Windows">Windows</option>
+          </optgroup>
+          <optgroup label="ATV / UTV">
+            <option value="ATV/UTV Accessories">ATV/UTV Accessories</option>
+          </optgroup>
+          <optgroup label="Jeep Parts">
+            <option value="Jeep Parts">All Jeep Parts</option>
+            <option value="Jeep Parts > Body & Interior">Body &amp; Interior</option>
+            <option value="Jeep Parts > Headliners">Headliners</option>
+            <option value="Jeep Parts > Roll Bars">Roll Bars</option>
+            <option value="Jeep Parts > Soft Tops">Soft Tops &amp; Window Kits</option>
+            <option value="Jeep Parts > Spare Tire">Spare Tire Parts</option>
+            <option value="Jeep Parts > Storage">Storage Bags</option>
+          </optgroup>
+          <optgroup label="General">
+            <option value="Vehicles & Parts">Vehicles &amp; Parts (General)</option>
+            <option value="Vehicles & Parts > Car Accessories">Car Accessories</option>
+            <option value="Vehicles & Parts > Motorcycle">Motorcycle</option>
+            <option value="Vehicles & Parts > Tires & Wheels">Tires &amp; Wheels</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Collection</label>
+        <select id="f-collection">
+          <option value="">Loading collections...</option>
+        </select>
+      </div>
+
+      <div class="wizard-nav">
+        <button type="button" class="wizard-prev" onclick="wizardPrev()">Back</button>
+        <button type="button" class="wizard-next" onclick="wizardNext()">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Meta + SEO -->
+    <div class="wizard-step" data-step="3">
+      <div class="step-title">SEO</div>
+      <div class="step-subtitle">Optimize for search engines</div>
+
+      <div class="form-group">
+        <div class="form-group-header">
+          <label>Meta Description</label>
+          <button type="button" class="ai-suggest-btn" id="ai-seo-btn" onclick="aiSuggestSeo()">
+            <span class="ai-spinner"></span>
+            <span class="ai-label">AI Suggest</span>
+          </button>
+        </div>
+        <textarea id="f-meta" placeholder="SEO description for Google..." style="min-height:80px"></textarea>
+        <span class="form-hint">Appears in Google search results</span>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group-header">
+          <label>SEO Tags</label>
+        </div>
+        <input type="text" id="f-tags" placeholder="tag1, tag2, tag3">
+        <span class="form-hint">Comma-separated &mdash; filled with AI Suggest above</span>
+      </div>
+
+      <div class="wizard-nav">
+        <button type="button" class="wizard-prev" onclick="wizardPrev()">Back</button>
+        <button type="button" class="wizard-next" onclick="showReview()">Review Product</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Review Screen -->
+  <div id="review-screen">
+    <div id="review-header">
+      <button id="review-back-btn">Edit</button>
+      <span id="review-header-title">Review</span>
+      <div class="spacer"></div>
+    </div>
+    <div id="review-content"></div>
+    <div id="review-footer">
+      <div id="publish-status"></div>
+      <button id="publish-btn" disabled>Publish to Shopify</button>
+      <span class="form-hint" style="text-align:center;margin-top:8px">Publishing is currently disabled</span>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('camera');
+    const shutterBtn = document.getElementById('shutter-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const photoCount = document.getElementById('photo-count');
+    const thumbnailStrip = document.getElementById('thumbnail-strip');
+    const captureCanvas = document.getElementById('capture-canvas');
+    const zoomControl = document.getElementById('zoom-control');
+    const zoomSlider = document.getElementById('zoom-slider');
+    const zoomMaxLabel = document.getElementById('zoom-max');
+    const flash = document.getElementById('flash');
+    const cameraScreen = document.getElementById('camera-screen');
+    const processingScreen = document.getElementById('processing-screen');
+    const resultsGrid = document.getElementById('results-grid');
+    const statusEl = document.getElementById('processing-status');
+    const backBtn = document.getElementById('back-btn');
+    const downloadAllBtn = document.getElementById('download-all-btn');
+    const continueBtn = document.getElementById('continue-btn');
+    const productScreen = document.getElementById('product-screen');
+    const productBackBtn = document.getElementById('product-back-btn');
+    const productForm = document.getElementById('product-form');
+    const publishBtn = document.getElementById('publish-btn');
+    const publishStatus = document.getElementById('publish-status');
+    const formImagesEl = document.getElementById('form-images');
+    const collectionSelect = document.getElementById('f-collection');
+    const reviewScreen = document.getElementById('review-screen');
+    const reviewBackBtn = document.getElementById('review-back-btn');
+    const reviewContent = document.getElementById('review-content');
+
+    let photos = [];
+    let stream = null;
+    let cameraReady = false;
+    video.setAttribute('webkit-playsinline', '');
+
+    // ── Camera ──
+    async function startCamera() {
+      const constraints = [
+        { video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+        { video: { facingMode: 'environment' }, audio: false },
+        { video: { facingMode: 'user' }, audio: false },
+        { video: true, audio: false }
+      ];
+
+      for (const c of constraints) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(c);
+          video.srcObject = stream;
+          await new Promise((resolve, reject) => {
+            video.onloadedmetadata = () => {
+              video.play().then(resolve).catch(reject);
+            };
+            setTimeout(() => reject(new Error('Video load timeout')), 5000);
+          });
+          cameraReady = true;
+          setupZoom();
+          return;
+        } catch (err) {
+          console.warn('Constraint failed, trying next:', err.message);
+          if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+          }
+        }
+      }
+      alert('Could not access camera. Please check permissions in Settings > Safari > Camera and reload.');
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+      cameraReady = false;
+      zoomControl.classList.remove('visible');
+    }
+
+    function setupZoom() {
+      try {
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+
+        if (capabilities.zoom) {
+          const min = capabilities.zoom.min || 1;
+          const max = capabilities.zoom.max || 1;
+
+          if (max > min) {
+            zoomSlider.min = min;
+            zoomSlider.max = max;
+            zoomSlider.step = (max - min) / 50;
+            zoomSlider.value = min;
+            zoomMaxLabel.textContent = max.toFixed(0) + 'x';
+            zoomControl.classList.add('visible');
+          }
+        }
+      } catch (e) {
+        console.warn('Zoom not supported:', e);
+      }
+    }
+
+    zoomSlider.addEventListener('input', () => {
+      if (!stream) return;
+      try {
+        const track = stream.getVideoTracks()[0];
+        track.applyConstraints({ advanced: [{ zoom: parseFloat(zoomSlider.value) }] });
+      } catch (e) {
+        console.warn('Zoom failed:', e);
+      }
+    });
+
+    function capturePhoto() {
+      if (photos.length >= 5 || !cameraReady) return;
+
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (!vw || !vh) return;
+      captureCanvas.width = vw;
+      captureCanvas.height = vh;
+      const ctx = captureCanvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, vw, vh);
+
+      flash.classList.remove('fire');
+      void flash.offsetWidth;
+      flash.classList.add('fire');
+
+      captureCanvas.toBlob(blob => {
+        photos.push(blob);
+        updateUI();
+      }, 'image/jpeg', 0.92);
+    }
+
+    function removePhoto(index) {
+      photos.splice(index, 1);
+      updateUI();
+    }
+
+    function updateUI() {
+      photoCount.textContent = `${photos.length} / 5`;
+      shutterBtn.disabled = photos.length >= 5;
+      nextBtn.classList.toggle('visible', photos.length > 0);
+      thumbnailStrip.classList.toggle('has-photos', photos.length > 0);
+
+      thumbnailStrip.innerHTML = '';
+      photos.forEach((blob, i) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'thumb-wrapper';
+
+        const img = document.createElement('img');
+        img.className = 'thumb';
+        img.src = URL.createObjectURL(blob);
+
+        const removeBtn = document.createElement('div');
+        removeBtn.className = 'thumb-remove';
+        removeBtn.textContent = '\u00d7';
+        removeBtn.onclick = (e) => { e.stopPropagation(); removePhoto(i); };
+
+        wrapper.appendChild(img);
+        wrapper.appendChild(removeBtn);
+        thumbnailStrip.appendChild(wrapper);
+      });
+    }
+
+    // ── Process images — send to server for product extraction ──
+    async function processImages() {
+      cameraScreen.style.display = 'none';
+      processingScreen.style.display = 'flex';
+      document.body.classList.add('scrollable');
+      resultsGrid.innerHTML = '';
+      downloadAllBtn.style.display = 'none';
+      stopCamera();
+
+      const resultItems = [];
+
+      for (let i = 0; i < photos.length; i++) {
+        statusEl.textContent = `${i + 1} of ${photos.length}`;
+
+        const spinnerEl = document.createElement('div');
+        spinnerEl.className = 'spinner';
+        spinnerEl.innerHTML = `
+          <div class="spinner-ring"></div>
+          <div class="progress-text">Extracting product ${i + 1}/${photos.length}...</div>
+        `;
+        resultsGrid.appendChild(spinnerEl);
+
+        try {
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(photos[i]);
+          });
+
+          const prog = spinnerEl.querySelector('.progress-text');
+          let imageToProcess = dataUrl;
+
+          // Try to remove vendor watermark via Claude image generation
+          if (prog) prog.textContent = `Removing watermark ${i + 1}/${photos.length}...`;
+          try {
+            const wmResp = await fetch('/api/remove-watermark', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: imageToProcess }),
+            });
+            const wmData = await wmResp.json();
+            if (wmResp.ok && wmData.image) {
+              imageToProcess = wmData.image;
+              const det = wmData.detection;
+              if (prog) {
+                const info = det && det.found ? det.regions.map(r => `x:${r.x} y:${r.y} w:${r.w} h:${r.h}`).join(' | ') : 'none detected';
+                prog.textContent = `Detection: ${info} (${wmData.dimensions?.w}x${wmData.dimensions?.h})`;
+              }
+              await new Promise(r => setTimeout(r, 3000));
+              if (prog) prog.textContent = `Watermark removed! Continuing...`;
+            } else {
+              console.warn('Watermark removal failed:', wmData.error || wmResp.status);
+              if (prog) prog.textContent = `Watermark removal failed (${wmData.error || wmResp.status}), continuing...`;
+              await new Promise(r => setTimeout(r, 1500));
+            }
+          } catch (wmErr) {
+            console.warn('Watermark removal error:', wmErr);
+            if (prog) prog.textContent = `Watermark removal error, continuing...`;
+            await new Promise(r => setTimeout(r, 1500));
+          }
+
+          if (prog) prog.textContent = `Removing background ${i + 1}/${photos.length}...`;
+
+          const resp = await fetch('/api/remove-bg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageToProcess }),
+          });
+
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.error || resp.statusText);
+          }
+
+          const { image: resultDataUrl } = await resp.json();
+
+          // Load transparent PNG
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = resultDataUrl;
+          });
+
+          // Build draggable result card
+          const card = document.createElement('div');
+          card.className = 'result-card';
+
+          const stage = document.createElement('div');
+          stage.className = 'drag-stage';
+
+          const productImg = document.createElement('img');
+          productImg.src = resultDataUrl;
+          productImg.draggable = false;
+
+          const watermarkImg = document.createElement('img');
+          watermarkImg.className = 'watermark-img';
+          watermarkImg.src = '/watermark.png';
+          watermarkImg.draggable = false;
+
+          const modeToggle = document.createElement('button');
+          modeToggle.className = 'drag-mode-toggle';
+          modeToggle.textContent = 'Move: Product';
+
+          const hint = document.createElement('div');
+          hint.className = 'drag-hint';
+          hint.textContent = 'Drag to move \u00b7 Pinch to resize';
+
+          stage.appendChild(productImg);
+          stage.appendChild(watermarkImg);
+          stage.appendChild(modeToggle);
+          stage.appendChild(hint);
+
+          // Center product initially after stage is in DOM
+          const item = { stage, productImg, watermarkImg, img, index: i + 1, x: 0, y: 0, imgScale: 1, bgColor: '#000000', sharpness: 0, originalDataUrl: resultDataUrl, originalImg: img, wmX: 0, wmY: 0, wmScale: 1, dragMode: 'product' };
+
+          modeToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (item.dragMode === 'product') {
+              item.dragMode = 'watermark';
+              modeToggle.textContent = 'Move: Watermark';
+              modeToggle.classList.add('active-watermark');
+              watermarkImg.style.outline = '2px dashed rgba(255,140,0,0.8)';
+            } else {
+              item.dragMode = 'product';
+              modeToggle.textContent = 'Move: Product';
+              modeToggle.classList.remove('active-watermark');
+              watermarkImg.style.outline = 'none';
+            }
+          });
+          makeDraggable(item);
+
+          // Background color picker
+          const picker = buildBgPicker(item);
+
+          const actions = document.createElement('div');
+          actions.className = 'result-actions';
+
+          const label = document.createElement('span');
+          label.className = 'result-label';
+          label.textContent = `Photo ${i + 1}`;
+
+          const dlBtn = document.createElement('button');
+          dlBtn.textContent = 'Save';
+          dlBtn.onclick = () => saveResult(item);
+
+          actions.appendChild(label);
+          actions.appendChild(dlBtn);
+          const sharpenRow = buildSharpenSlider(item);
+          card.appendChild(stage);
+          card.appendChild(picker);
+          card.appendChild(sharpenRow);
+          card.appendChild(actions);
+          spinnerEl.replaceWith(card);
+
+          // Center after DOM insertion
+          requestAnimationFrame(() => {
+            const sw = stage.offsetWidth;
+            const sh = stage.offsetHeight;
+            const iw = productImg.offsetWidth;
+            const ih = productImg.offsetHeight;
+            item.x = (sw - iw) / 2;
+            item.y = (sh - ih) / 2;
+            productImg.style.left = item.x + 'px';
+            productImg.style.top = item.y + 'px';
+            // Position watermark bottom-right by default
+            const wmW = watermarkImg.offsetWidth;
+            const wmH = watermarkImg.offsetHeight;
+            item.wmX = sw - wmW - 10;
+            item.wmY = sh - wmH - 10;
+            watermarkImg.style.left = item.wmX + 'px';
+            watermarkImg.style.top = item.wmY + 'px';
+          });
+
+          resultItems.push(item);
+
+        } catch (err) {
+          console.error('BG removal failed:', err);
+          spinnerEl.innerHTML = `<div class="progress-text" style="color:#ff6b6b">Failed: ${err.message}</div>`;
+        }
+      }
+
+      statusEl.textContent = 'Done';
+      currentResultItems = resultItems;
+      if (resultItems.length > 0) {
+        downloadAllBtn.style.display = 'block';
+        downloadAllBtn.onclick = () => {
+          resultItems.forEach(r => saveResult(r));
+        };
+        continueBtn.style.display = 'block';
+      }
+    }
+
+    // ── Background color picker ──
+    const presetColors = [
+      { color: '#000000', label: 'Black' },
+      { color: '#FFFFFF', label: 'White' },
+      { color: '#F5F5F5', label: 'Light gray' },
+      { color: '#1a1a2e', label: 'Navy' },
+    ];
+
+    function buildBgPicker(item) {
+      const row = document.createElement('div');
+      row.className = 'bg-picker';
+
+      const lbl = document.createElement('span');
+      lbl.className = 'bg-picker-label';
+      lbl.textContent = 'BG';
+      row.appendChild(lbl);
+
+      const swatches = [];
+
+      presetColors.forEach(({ color }) => {
+        const btn = document.createElement('button');
+        btn.className = 'bg-swatch' + (color === item.bgColor ? ' active' : '');
+        btn.style.background = color;
+        btn.onclick = () => {
+          item.bgColor = color;
+          item.stage.style.background = color;
+          swatches.forEach(s => s.classList.remove('active'));
+          customWrap.classList.remove('active');
+          btn.classList.add('active');
+        };
+        swatches.push(btn);
+        row.appendChild(btn);
+      });
+
+      // Custom color input
+      const customWrap = document.createElement('div');
+      customWrap.className = 'bg-custom-input';
+      customWrap.style.background = '#ff6600';
+      const customInput = document.createElement('input');
+      customInput.type = 'color';
+      customInput.value = '#ff6600';
+      customInput.onchange = () => {
+        item.bgColor = customInput.value;
+        item.stage.style.background = customInput.value;
+        customWrap.style.background = customInput.value;
+        swatches.forEach(s => s.classList.remove('active'));
+        customWrap.classList.add('active');
+      };
+      customInput.oninput = () => {
+        item.bgColor = customInput.value;
+        item.stage.style.background = customInput.value;
+        customWrap.style.background = customInput.value;
+        swatches.forEach(s => s.classList.remove('active'));
+        customWrap.classList.add('active');
+      };
+      customWrap.appendChild(customInput);
+      row.appendChild(customWrap);
+
+      return row;
+    }
+
+    // ── Drag + pinch-to-resize ──
+    function makeDraggable(item) {
+      const { stage, productImg, watermarkImg } = item;
+      let dragging = false;
+      let pinching = false;
+      let startX, startY, origX, origY;
+      let startDist, origScale;
+
+      function applyTransform() {
+        productImg.style.left = item.x + 'px';
+        productImg.style.top = item.y + 'px';
+        productImg.style.transform = `scale(${item.imgScale})`;
+        productImg.style.transformOrigin = '0 0';
+        if (watermarkImg) {
+          watermarkImg.style.left = item.wmX + 'px';
+          watermarkImg.style.top = item.wmY + 'px';
+          watermarkImg.style.transform = `scale(${item.wmScale})`;
+          watermarkImg.style.transformOrigin = '0 0';
+        }
+      }
+
+      function getPos() {
+        if (item.dragMode === 'watermark') return { x: item.wmX, y: item.wmY };
+        return { x: item.x, y: item.y };
+      }
+      function setPos(nx, ny) {
+        if (item.dragMode === 'watermark') { item.wmX = nx; item.wmY = ny; }
+        else { item.x = nx; item.y = ny; }
+      }
+      function getScale() {
+        return item.dragMode === 'watermark' ? item.wmScale : item.imgScale;
+      }
+      function setScale(s) {
+        if (item.dragMode === 'watermark') item.wmScale = s;
+        else item.imgScale = s;
+      }
+
+      function getTouchDist(t1, t2) {
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function getTouchCenter(t1, t2) {
+        return {
+          x: (t1.clientX + t2.clientX) / 2,
+          y: (t1.clientY + t2.clientY) / 2,
+        };
+      }
+
+      // Touch events
+      stage.addEventListener('touchstart', (e) => {
+        if (e.target.classList.contains('drag-mode-toggle')) return;
+        e.preventDefault();
+        stage.classList.add('dragged');
+        const pos = getPos();
+
+        if (e.touches.length === 1) {
+          dragging = true;
+          pinching = false;
+          const rect = stage.getBoundingClientRect();
+          startX = e.touches[0].clientX - rect.left;
+          startY = e.touches[0].clientY - rect.top;
+          origX = pos.x;
+          origY = pos.y;
+        } else if (e.touches.length === 2) {
+          dragging = false;
+          pinching = true;
+          startDist = getTouchDist(e.touches[0], e.touches[1]);
+          origScale = getScale();
+          const rect = stage.getBoundingClientRect();
+          const center = getTouchCenter(e.touches[0], e.touches[1]);
+          startX = center.x - rect.left;
+          startY = center.y - rect.top;
+          origX = pos.x;
+          origY = pos.y;
+        }
+      }, { passive: false });
+
+      stage.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+
+        if (dragging && e.touches.length === 1) {
+          const rect = stage.getBoundingClientRect();
+          const cx = e.touches[0].clientX - rect.left;
+          const cy = e.touches[0].clientY - rect.top;
+          setPos(origX + (cx - startX), origY + (cy - startY));
+          applyTransform();
+        } else if (e.touches.length === 2) {
+          if (!pinching) {
+            pinching = true;
+            dragging = false;
+            startDist = getTouchDist(e.touches[0], e.touches[1]);
+            origScale = getScale();
+            const rect = stage.getBoundingClientRect();
+            const center = getTouchCenter(e.touches[0], e.touches[1]);
+            startX = center.x - rect.left;
+            startY = center.y - rect.top;
+            const pos = getPos();
+            origX = pos.x;
+            origY = pos.y;
+          }
+
+          const dist = getTouchDist(e.touches[0], e.touches[1]);
+          const scaleFactor = dist / startDist;
+          setScale(Math.max(0.1, Math.min(5, origScale * scaleFactor)));
+
+          const rect = stage.getBoundingClientRect();
+          const center = getTouchCenter(e.touches[0], e.touches[1]);
+          const cx = center.x - rect.left;
+          const cy = center.y - rect.top;
+          setPos(origX + (cx - startX), origY + (cy - startY));
+
+          applyTransform();
+        }
+      }, { passive: false });
+
+      stage.addEventListener('touchend', (e) => {
+        if (e.touches.length === 0) {
+          dragging = false;
+          pinching = false;
+        } else if (e.touches.length === 1) {
+          pinching = false;
+          dragging = true;
+          const rect = stage.getBoundingClientRect();
+          startX = e.touches[0].clientX - rect.left;
+          startY = e.touches[0].clientY - rect.top;
+          const pos = getPos();
+          origX = pos.x;
+          origY = pos.y;
+        }
+      });
+
+      // Mouse drag
+      stage.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        stage.classList.add('dragged');
+        const rect = stage.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+        const pos = getPos();
+        origX = pos.x;
+        origY = pos.y;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const rect = stage.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        setPos(origX + (cx - startX), origY + (cy - startY));
+        applyTransform();
+      });
+
+      window.addEventListener('mouseup', () => { dragging = false; });
+
+      // Mouse wheel zoom (desktop)
+      stage.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        stage.classList.add('dragged');
+        const delta = e.deltaY > 0 ? 0.95 : 1.05;
+        setScale(Math.max(0.1, Math.min(5, getScale() * delta)));
+        applyTransform();
+      }, { passive: false });
+    }
+
+    // ── Sharpen image via convolution ──
+    function sharpenImage(sourceImg, amount) {
+      // amount 0 = no change, 1 = full sharpen
+      const c = document.createElement('canvas');
+      const w = sourceImg.naturalWidth || sourceImg.width;
+      const h = sourceImg.naturalHeight || sourceImg.height;
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(sourceImg, 0, 0, w, h);
+
+      if (amount <= 0) return c.toDataURL('image/png');
+
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const src = imageData.data;
+      const out = new Uint8ClampedArray(src.length);
+
+      // Sharpen kernel weighted by amount
+      const a = amount;
+      const center = 1 + 4 * a;
+      // kernel: [0, -a, 0, -a, center, -a, 0, -a, 0]
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const i = (y * w + x) * 4;
+          for (let ch = 0; ch < 3; ch++) {
+            const val =
+              -a * src[((y - 1) * w + x) * 4 + ch] +
+              -a * src[(y * w + (x - 1)) * 4 + ch] +
+              center * src[i + ch] +
+              -a * src[(y * w + (x + 1)) * 4 + ch] +
+              -a * src[((y + 1) * w + x) * 4 + ch];
+            out[i + ch] = val;
+          }
+          out[i + 3] = src[i + 3]; // preserve alpha
+        }
+      }
+
+      // Copy edges unmodified
+      for (let x = 0; x < w; x++) {
+        for (let ch = 0; ch < 4; ch++) {
+          out[x * 4 + ch] = src[x * 4 + ch];
+          out[((h - 1) * w + x) * 4 + ch] = src[((h - 1) * w + x) * 4 + ch];
+        }
+      }
+      for (let y = 0; y < h; y++) {
+        for (let ch = 0; ch < 4; ch++) {
+          out[(y * w) * 4 + ch] = src[(y * w) * 4 + ch];
+          out[(y * w + w - 1) * 4 + ch] = src[(y * w + w - 1) * 4 + ch];
+        }
+      }
+
+      const outData = new ImageData(out, w, h);
+      ctx.putImageData(outData, 0, 0);
+      return c.toDataURL('image/png');
+    }
+
+    function buildSharpenSlider(item) {
+      const row = document.createElement('div');
+      row.className = 'sharpen-control';
+
+      const lbl = document.createElement('label');
+      lbl.textContent = 'Sharpen';
+      row.appendChild(lbl);
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '100';
+      slider.value = '0';
+      row.appendChild(slider);
+
+      const val = document.createElement('span');
+      val.className = 'sharpen-value';
+      val.textContent = '0';
+      row.appendChild(val);
+
+      let debounceTimer;
+      slider.addEventListener('input', () => {
+        const pct = parseInt(slider.value);
+        val.textContent = pct;
+        item.sharpness = pct / 100;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          if (item.sharpness > 0) {
+            const sharpened = sharpenImage(item.originalImg, item.sharpness);
+            item.productImg.src = sharpened;
+          } else {
+            item.productImg.src = item.originalDataUrl;
+          }
+        }, 100);
+      });
+
+      return row;
+    }
+
+    // ── Render item to canvas data URL ──
+    const watermarkImgLoaded = new Image();
+    watermarkImgLoaded.src = '/watermark.png';
+
+    function renderItemToDataUrl(item) {
+      const { stage, productImg, watermarkImg, x, y, imgScale } = item;
+      const sw = stage.offsetWidth;
+      const sh = stage.offsetHeight;
+      if (!sw || !sh) return '';
+      const renderScale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = sw * renderScale;
+      canvas.height = sh * renderScale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = item.bgColor || '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const baseW = productImg.offsetWidth;
+      const baseH = productImg.offsetHeight;
+
+      // Draw product
+      ctx.drawImage(productImg, x * renderScale, y * renderScale, baseW * imgScale * renderScale, baseH * imgScale * renderScale);
+
+      // Draw watermark
+      if (watermarkImg && watermarkImgLoaded.complete) {
+        const wmW = watermarkImg.offsetWidth;
+        const wmH = watermarkImg.offsetHeight;
+        ctx.globalAlpha = 0.5;
+        ctx.drawImage(watermarkImgLoaded, item.wmX * renderScale, item.wmY * renderScale, wmW * item.wmScale * renderScale, wmH * item.wmScale * renderScale);
+        ctx.globalAlpha = 1.0;
+      }
+
+      return canvas.toDataURL('image/png');
+    }
+
+    function saveResult(item) {
+      const dataUrl = renderItemToDataUrl(item);
+      const link = document.createElement('a');
+      link.download = `product-${item.index}.png`;
+      link.href = dataUrl;
+      link.click();
+    }
+
+    // ── Product form flow (wizard) ──
+    let currentResultItems = [];
+    let cachedPreviewUrls = [];
+    let wizardStep = 0;
+    const totalSteps = 4;
+    const wizardSteps = document.querySelectorAll('.wizard-step');
+    const stepDots = document.querySelectorAll('.step-dot');
+
+    function updateWizardUI() {
+      wizardSteps.forEach((el, i) => {
+        el.classList.toggle('active', i === wizardStep);
+      });
+      stepDots.forEach((dot, i) => {
+        dot.classList.remove('active', 'done');
+        if (i === wizardStep) dot.classList.add('active');
+        else if (i < wizardStep) dot.classList.add('done');
+      });
+      const titles = ['Product Info', 'Pricing', 'Organization', 'SEO'];
+      document.getElementById('product-header-title').textContent = `Step ${wizardStep + 1} of ${totalSteps}`;
+      window.scrollTo(0, 0);
+    }
+
+    function wizardNext() {
+      // Validate step 0: title required
+      if (wizardStep === 0) {
+        const title = document.getElementById('f-title').value.trim();
+        if (!title) {
+          document.getElementById('f-title').focus();
+          document.getElementById('f-title').style.borderColor = '#ff6b6b';
+          setTimeout(() => { document.getElementById('f-title').style.borderColor = ''; }, 1500);
+          return;
+        }
+      }
+      if (wizardStep < totalSteps - 1) {
+        wizardStep++;
+        updateWizardUI();
+      }
+    }
+
+    function wizardPrev() {
+      if (wizardStep > 0) {
+        wizardStep--;
+        updateWizardUI();
+      }
+    }
+
+    async function loadCollections() {
+      collectionSelect.innerHTML = '<option value="">Loading...</option>';
+      try {
+        const resp = await fetch('/api/shopify-collections');
+        if (!resp.ok) throw new Error('Failed to fetch');
+        const data = await resp.json();
+        collectionSelect.innerHTML = '<option value="">No collection</option>';
+        data.collections.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.title;
+          collectionSelect.appendChild(opt);
+        });
+      } catch (err) {
+        collectionSelect.innerHTML = '<option value="">Could not load collections</option>';
+      }
+    }
+
+    function showProductForm() {
+      // Render previews BEFORE hiding the processing screen (stage must be visible for dimensions)
+      cachedPreviewUrls = currentResultItems.map(item => renderItemToDataUrl(item));
+
+      processingScreen.style.display = 'none';
+      productScreen.style.display = 'flex';
+      wizardStep = 0;
+      updateWizardUI();
+
+      // Show image previews from cache
+      formImagesEl.innerHTML = '';
+      cachedPreviewUrls.forEach(url => {
+        const preview = document.createElement('img');
+        preview.src = url;
+        formImagesEl.appendChild(preview);
+      });
+
+      loadCollections();
+    }
+
+    continueBtn.addEventListener('click', showProductForm);
+
+    productBackBtn.addEventListener('click', () => {
+      if (wizardStep > 0) {
+        wizardPrev();
+      } else {
+        productScreen.style.display = 'none';
+        processingScreen.style.display = 'flex';
+      }
+    });
+
+    // ── AI Suggestions ──
+    async function aiSuggestDescription() {
+      const btn = document.getElementById('ai-desc-btn');
+      const title = document.getElementById('f-title').value.trim();
+      if (!title) {
+        document.getElementById('f-title').focus();
+        document.getElementById('f-title').style.borderColor = '#ff6b6b';
+        setTimeout(() => { document.getElementById('f-title').style.borderColor = ''; }, 1500);
+        return;
+      }
+
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const resp = await fetch('/api/ai-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            field: 'description',
+            images: cachedPreviewUrls,
+          }),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || resp.statusText);
+        }
+
+        const data = await resp.json();
+        document.getElementById('f-description').value = data.description || '';
+      } catch (err) {
+        console.error('AI suggest failed:', err);
+        alert('AI suggestion failed: ' + err.message);
+      } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
+
+    async function aiSuggestSeo() {
+      const btn = document.getElementById('ai-seo-btn');
+      const title = document.getElementById('f-title').value.trim();
+      const description = document.getElementById('f-description').value.trim();
+
+      btn.classList.add('loading');
+      btn.disabled = true;
+
+      try {
+        const resp = await fetch('/api/ai-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            description,
+            field: 'seo',
+            images: cachedPreviewUrls,
+          }),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || resp.statusText);
+        }
+
+        const data = await resp.json();
+        if (data.meta_description) document.getElementById('f-meta').value = data.meta_description;
+        if (data.tags) document.getElementById('f-tags').value = data.tags;
+      } catch (err) {
+        console.error('AI suggest failed:', err);
+        alert('AI suggestion failed: ' + err.message);
+      } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
+    }
+
+    function makeEditable(container, fieldId, value, displayFn, inputType) {
+      const display = document.createElement('span');
+      display.className = 'review-field-value' + (value ? '' : ' empty');
+      display.textContent = displayFn(value);
+
+      display.addEventListener('click', () => {
+        const isTextarea = inputType === 'textarea';
+        const input = document.createElement(isTextarea ? 'textarea' : 'input');
+        input.className = isTextarea ? 'review-edit-textarea' : 'review-edit-input';
+        if (!isTextarea) input.type = inputType || 'text';
+        if (inputType === 'number') input.step = fieldId === 'f-price' ? '0.01' : '0.1';
+        input.value = value;
+
+        const hint = document.createElement('div');
+        hint.className = 'review-edit-hint';
+        hint.textContent = 'Tap outside to save';
+
+        display.replaceWith(input);
+        container.appendChild(hint);
+        input.focus();
+
+        const save = () => {
+          value = input.value;
+          document.getElementById(fieldId).value = value;
+          display.textContent = displayFn(value);
+          display.className = 'review-field-value' + (value ? '' : ' empty');
+          input.replaceWith(display);
+          hint.remove();
+        };
+
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !isTextarea) { e.preventDefault(); input.blur(); }
+        });
+      });
+
+      container.appendChild(display);
+    }
+
+    function showReview() {
+      const title = document.getElementById('f-title').value;
+      const description = document.getElementById('f-description').value;
+      const price = document.getElementById('f-price').value;
+      const weight = document.getElementById('f-weight').value;
+      const categoryEl = document.getElementById('f-category');
+      const categoryVal = categoryEl.value;
+      const categoryText = categoryEl.options[categoryEl.selectedIndex]?.text || '';
+      const collectionEl = document.getElementById('f-collection');
+      const collectionVal = collectionEl.value;
+      const collectionText = collectionVal ? collectionEl.options[collectionEl.selectedIndex]?.text : '';
+      const meta = document.getElementById('f-meta').value;
+      const tags = document.getElementById('f-tags').value;
+
+      reviewContent.innerHTML = '';
+
+      // Images
+      const imgsDiv = document.createElement('div');
+      imgsDiv.className = 'review-images';
+      cachedPreviewUrls.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        imgsDiv.appendChild(img);
+      });
+      reviewContent.appendChild(imgsDiv);
+
+      // Title
+      const titleField = document.createElement('div');
+      titleField.className = 'review-field';
+      titleField.innerHTML = '<span class="review-field-label">Title</span>';
+      makeEditable(titleField, 'f-title', title, v => v || 'No title', 'text');
+      reviewContent.appendChild(titleField);
+      reviewContent.appendChild(makeDivider());
+
+      // Description
+      const descField = document.createElement('div');
+      descField.className = 'review-field';
+      descField.innerHTML = '<span class="review-field-label">Description</span>';
+      makeEditable(descField, 'f-description', description, v => v || 'No description', 'textarea');
+      reviewContent.appendChild(descField);
+      reviewContent.appendChild(makeDivider());
+
+      // Price + Weight row
+      const priceRow = document.createElement('div');
+      priceRow.className = 'review-row';
+
+      const priceField = document.createElement('div');
+      priceField.className = 'review-field';
+      priceField.innerHTML = '<span class="review-field-label">Price</span>';
+      makeEditable(priceField, 'f-price', price, v => v ? '$' + parseFloat(v).toFixed(2) : '$0.00', 'number');
+
+      const weightField = document.createElement('div');
+      weightField.className = 'review-field';
+      weightField.innerHTML = '<span class="review-field-label">Weight</span>';
+      makeEditable(weightField, 'f-weight', weight, v => v ? v + ' lbs' : 'Not set', 'number');
+
+      priceRow.appendChild(priceField);
+      priceRow.appendChild(weightField);
+      reviewContent.appendChild(priceRow);
+      reviewContent.appendChild(makeDivider());
+
+      // Category + Collection row
+      const catRow = document.createElement('div');
+      catRow.className = 'review-row';
+
+      const catField = document.createElement('div');
+      catField.className = 'review-field';
+      catField.innerHTML = '<span class="review-field-label">Category</span>';
+      const catDisplay = document.createElement('span');
+      catDisplay.className = 'review-field-value' + (categoryText && categoryText !== 'Select category...' ? '' : ' empty');
+      catDisplay.textContent = categoryText && categoryText !== 'Select category...' ? categoryText : 'None';
+      catField.appendChild(catDisplay);
+
+      const colField = document.createElement('div');
+      colField.className = 'review-field';
+      colField.innerHTML = '<span class="review-field-label">Collection</span>';
+      const colDisplay = document.createElement('span');
+      colDisplay.className = 'review-field-value' + (collectionText ? '' : ' empty');
+      colDisplay.textContent = collectionText || 'None';
+      colField.appendChild(colDisplay);
+
+      // Tap category to go back to step 3
+      catDisplay.addEventListener('click', () => {
+        reviewScreen.style.display = 'none';
+        productScreen.style.display = 'flex';
+        wizardStep = 2;
+        updateWizardUI();
+      });
+      colDisplay.addEventListener('click', () => {
+        reviewScreen.style.display = 'none';
+        productScreen.style.display = 'flex';
+        wizardStep = 2;
+        updateWizardUI();
+      });
+
+      catRow.appendChild(catField);
+      catRow.appendChild(colField);
+      reviewContent.appendChild(catRow);
+      reviewContent.appendChild(makeDivider());
+
+      // Meta Description
+      const metaField = document.createElement('div');
+      metaField.className = 'review-field';
+      metaField.innerHTML = '<span class="review-field-label">Meta Description</span>';
+      makeEditable(metaField, 'f-meta', meta, v => v || 'Not set', 'textarea');
+      reviewContent.appendChild(metaField);
+      reviewContent.appendChild(makeDivider());
+
+      // SEO Tags
+      const tagsField = document.createElement('div');
+      tagsField.className = 'review-field';
+      tagsField.innerHTML = '<span class="review-field-label">SEO Tags</span>';
+      makeEditable(tagsField, 'f-tags', tags, v => v || 'None', 'text');
+      reviewContent.appendChild(tagsField);
+
+      productScreen.style.display = 'none';
+      reviewScreen.style.display = 'flex';
+      window.scrollTo(0, 0);
+    }
+
+    function makeDivider() {
+      const d = document.createElement('div');
+      d.className = 'review-divider';
+      return d;
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    reviewBackBtn.addEventListener('click', () => {
+      reviewScreen.style.display = 'none';
+      productScreen.style.display = 'flex';
+    });
+
+    // ── Home Screen ──
+    const homeScreen = document.getElementById('home-screen');
+
+    function goToCamera() {
+      homeScreen.style.display = 'none';
+      cameraScreen.style.display = 'flex';
+      startCamera();
+    }
+
+    function goToLookup() {
+      homeScreen.style.display = 'none';
+      lookupScreen.style.display = 'flex';
+      document.body.classList.add('scrollable');
+      setTimeout(() => lookupInput.focus(), 100);
+    }
+
+    function goHome() {
+      cameraScreen.style.display = 'none';
+      lookupScreen.style.display = 'none';
+      processingScreen.style.display = 'none';
+      productScreen.style.display = 'none';
+      reviewScreen.style.display = 'none';
+      document.body.classList.remove('scrollable');
+      homeScreen.style.display = 'flex';
+      stopCamera();
+      photos = [];
+      updateUI();
+    }
+
+    // ── Part Lookup ──
+    const lookupScreen = document.getElementById('lookup-screen');
+    const lookupInput = document.getElementById('lookup-input');
+    const lookupGrid = document.getElementById('lookup-grid');
+    const lookupStatus = document.getElementById('lookup-status');
+    const lookupUseBtn = document.getElementById('lookup-use-btn');
+    const lookupSearchBtn = document.getElementById('lookup-search-btn');
+    let lookupSelected = new Set();
+    let lookupResults = [];
+
+    document.getElementById('lookup-back-btn').addEventListener('click', () => {
+      lookupScreen.style.display = 'none';
+      document.body.classList.remove('scrollable');
+      homeScreen.style.display = 'flex';
+    });
+
+    lookupInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); searchPartNumber(); }
+    });
+
+    async function searchPartNumber() {
+      const query = lookupInput.value.trim();
+      if (!query) return;
+
+      lookupSearchBtn.disabled = true;
+      lookupStatus.textContent = 'Searching...';
+      lookupGrid.innerHTML = '';
+      lookupUseBtn.style.display = 'none';
+      lookupSelected.clear();
+      lookupResults = [];
+
+      try {
+        const resp = await fetch('/api/image-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || resp.statusText);
+        }
+
+        const data = await resp.json();
+        lookupResults = data.images || [];
+
+        if (lookupResults.length === 0) {
+          lookupStatus.textContent = 'No images found. Try a different search.';
+          return;
+        }
+
+        lookupStatus.textContent = `${lookupResults.length} results — tap to select (max 5)`;
+
+        lookupResults.forEach((img, i) => {
+          const card = document.createElement('div');
+          card.className = 'lookup-img-card';
+          card.innerHTML = `
+            <img src="${img.thumbnail}" alt="${img.title}" loading="lazy">
+            <div class="lookup-img-check">✓</div>
+            <div class="lookup-img-source">${img.source}</div>
+          `;
+          card.addEventListener('click', () => {
+            if (card.classList.contains('selected')) {
+              card.classList.remove('selected');
+              lookupSelected.delete(i);
+            } else if (lookupSelected.size < 5) {
+              card.classList.add('selected');
+              lookupSelected.add(i);
+            }
+            lookupUseBtn.style.display = lookupSelected.size > 0 ? 'block' : 'none';
+            lookupUseBtn.textContent = `Use ${lookupSelected.size} Image${lookupSelected.size > 1 ? 's' : ''}`;
+          });
+          lookupGrid.appendChild(card);
+        });
+
+      } catch (err) {
+        lookupStatus.textContent = 'Search failed: ' + err.message;
+      } finally {
+        lookupSearchBtn.disabled = false;
+      }
+    }
+
+    lookupUseBtn.addEventListener('click', async () => {
+      if (lookupSelected.size === 0) return;
+
+      // Fetch full images and convert to blobs for the same pipeline
+      lookupUseBtn.disabled = true;
+      lookupUseBtn.textContent = 'Fetching images...';
+
+      const selectedImages = [...lookupSelected].map(i => lookupResults[i]);
+      photos = [];
+
+      for (const img of selectedImages) {
+        try {
+          lookupUseBtn.textContent = `Fetching ${photos.length + 1}/${selectedImages.length}...`;
+          const resp = await fetch('/api/fetch-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: img.url }),
+          });
+
+          if (!resp.ok) throw new Error('Failed to fetch image');
+
+          const data = await resp.json();
+          // Convert data URL to blob
+          const b64 = data.image.split(',')[1];
+          const mime = data.image.split(':')[1].split(';')[0];
+          const bytes = atob(b64);
+          const arr = new Uint8Array(bytes.length);
+          for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+          photos.push(new Blob([arr], { type: mime }));
+        } catch (err) {
+          console.error('Failed to fetch image:', err);
+        }
+      }
+
+      lookupUseBtn.disabled = false;
+
+      if (photos.length === 0) {
+        lookupUseBtn.textContent = 'Failed to fetch images. Try again.';
+        lookupUseBtn.style.display = 'block';
+        return;
+      }
+
+      // Go to processing screen with fetched images
+      lookupScreen.style.display = 'none';
+      processImages();
+    });
+
+    // ── Navigation ──
+    function goBack() {
+      goHome();
+    }
+
+    shutterBtn.addEventListener('click', capturePhoto);
+    nextBtn.addEventListener('click', () => { processImages(); });
+    backBtn.addEventListener('click', goBack);
+  </script>
+</body>
+</html>
